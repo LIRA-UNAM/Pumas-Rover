@@ -13,10 +13,10 @@ class MobileBaseNode(Node):
         self.bot = Rosmaster() #yahboom_board
         self.bot.create_receive_threading()
         self.dist = [0,0,0,0]
-        self.diametro = 0.107 #m
+        self.diameter = 0.107 #m
         self.ppr = 3600 #aproximated pulses for a revolution of each encoder
         #robot_x,robot_y,robot_a
-        self.perimeter = 10.7*3.14159
+        self.perimeter = self.diameter*3.14159
         self.current_speed = 40
         print (self.bot.get_version())
         
@@ -39,14 +39,14 @@ class MobileBaseNode(Node):
                 self.current_speed)
            
         #self.get_logger().info(f"avanzando")
-        self.get_logger().info(f"Velocidad actual: {self.actual_speed}")
+        self.get_logger().info(f"Velocidad actual: {self.current_speed}")
 
     def encoder_sensor (self): #get_encoders #promedio izquierdos y de derechos
         #print(self.bot.get_motor_encoder())
-        self.dist[0] = -1*(self.bot.get_motor_encoder()[0]) * (self.perimetro/self.ppr)
-        self.dist[1] = -1*(self.bot.get_motor_encoder()[1]) * (self.perimetro/self.ppr)
-        self.dist[2] = -1*(self.bot.get_motor_encoder()[2]) * (self.perimetro/self.ppr)
-        self.dist[3] = -1*(self.bot.get_motor_encoder()[3]) * (self.perimetro/self.ppr)
+        self.dist[0] = -1*(self.bot.get_motor_encoder()[0]) * (self.perimeter/self.ppr)
+        self.dist[1] = -1*(self.bot.get_motor_encoder()[1]) * (self.perimeter/self.ppr)
+        self.dist[2] = -1*(self.bot.get_motor_encoder()[2]) * (self.perimeter/self.ppr)
+        self.dist[3] = -1*(self.bot.get_motor_encoder()[3]) * (self.perimeter/self.ppr)
     
 
 
