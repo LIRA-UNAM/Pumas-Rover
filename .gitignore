@@ -1,0 +1,22 @@
+*~
+*.pyc
+*.user
+#*#
+*.bkp
+build/
+install/
+log/
+PushAllChanges.py
+
+
+# Ignore build artifacts
+/build/
+/install/
+/log/
+
+# Ignore tutorials files
+/my_first_simulation/
+/my_package/
+
+*/.vscode/
+*.wbproj
