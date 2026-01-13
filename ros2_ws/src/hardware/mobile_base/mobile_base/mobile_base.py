@@ -84,7 +84,7 @@ class MobileBaseNode(Node):
         self.y += d_s * math.sin(self.theta)
 
         self.get_logger().info(
-            f"x={self.x:.3f} y={self.y:.3f} theta={self.theta:.3f}"
+            f"x={self.x:.4f} y={self.y:.4f} theta={self.theta:.4f}"
         )
         
 
