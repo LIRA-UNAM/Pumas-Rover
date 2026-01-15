@@ -43,19 +43,34 @@ class KeyboardSpeed(Node):
 
             elif key == "a" or key == "A":
                 self.current_linear_speed = 0.0
-                self.current_angular_speed = self.current_angular_speed - 0.1
+                self.current_angular_speed = self.current_angular_speed + 0.1
                 self.get_logger().info(f"Left_turn")
               
 
             elif key == "d" or key== "D":
                 self.current_linear_speed = 0.0
-                self.current_angular_speed = self.current_angular_speed + 0.1
+                self.current_angular_speed = self.current_angular_speed - 0.1
                 self.get_logger().info(f"Right_turn")
 
             elif key == "h" or key== "H":
                 self.current_linear_speed = 0.0
-                self.current_angular_speed = 10.0
+                self.current_angular_speed = -5.0
                 self.get_logger().info(f"Right_turn")
+
+            elif key == "f" or key== "F":
+                self.current_linear_speed = 0.0
+                self.current_angular_speed = 5.0
+                self.get_logger().info(f"Left_turn")
+
+            elif key == "t" or key== "T":
+                self.current_linear_speed = 5.0
+                self.current_angular_speed = 0.0
+                self.get_logger().info(f"Foward")
+
+            elif key == "g" or key== "G":
+                self.current_linear_speed = -5.0
+                self.current_angular_speed = 0.0
+                self.get_logger().info(f"Backward")
               
 
             else:
@@ -72,7 +87,7 @@ class KeyboardSpeed(Node):
 
     def get_key(self):
 
-        tty.setraw(sys.stdin.fileno())
+        tty.setcbreak(sys.stdin.fileno())
         rlist, _, _ = select.select([sys.stdin], [], [], 0.1) 
         
         if rlist: key = sys.stdin.read(1)
