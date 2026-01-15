@@ -5,14 +5,20 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer #tf2 = transformation for odometry and base_link
-from Rosmaster_Lib import Rosmaster
+#from Rosmaster_Lib import Rosmaster
+from mobile_base import roboclaw_3
+#import roboclaw_3
+#from roboclaw_3 import Roboclaw
 
 class MobileBaseNode(Node): 
     def __init__(self):
         super().__init__('mobile_base')
 
-        self.bot = Rosmaster('/dev/ttyUSB0')
-        self.bot.create_receive_threading()
+        # self.bot = Rosmaster('/dev/ttyUSB0')
+        # self.bot.create_receive_threading()
+        self.ADDRESS = 0x80
+        self.roboclaw = roboclaw_3.Roboclaw("/dev/ttyACM0", 115200)
+        self.roboclaw.Open()
 
         self.subscription = self.create_subscription(
             Twist,
@@ -36,7 +42,9 @@ class MobileBaseNode(Node):
         self.y = 0.0
         self.theta = 0.0
 
-        self.prev_enc = self.bot.get_motor_encoder()
+        #self.prev_enc = self.bot.get_motor_encoder()
+        self.prev_enc1 = self.roboclaw.ReadEncM1(self.ADDRESS)
+        self.prev_enc2 = self.roboclaw.ReadEncM2(self.ADDRESS)
 
         self.timer = self.create_timer(0.05, self.update_odometry)
 
@@ -52,29 +60,33 @@ class MobileBaseNode(Node):
         pwm_angular = int(self.angular * self.max_pwm)
 
         left = pwm_linear - pwm_angular
-        right = pwm_linear + pwm_angular
+        right = (pwm_linear + pwm_angular)*-1
 
-        left = max(min(left, 100), -100)
-        right = max(min(right, 100), -100)
+        left = max(min(left, 127), -127)
+        right = max(min(right, 127), -127)
 
-        self.bot.set_motor(left, left, right, right)
+        if (left >= 0):
+            self.roboclaw.ForwardM1(self.ADDRESS, left)
+        else:
+            self.roboclaw.BackwardM1(self.ADDRESS, -left)
+        if (right >= 0):
+            self.roboclaw.ForwardM2(self.ADDRESS, right)
+        else:
+            self.roboclaw.BackwardM2(self.ADDRESS, -right)
 
     def update_odometry(self):
-        enc = self.bot.get_motor_encoder()
-        if enc is None or self.prev_enc is None:
+        #enc=self.bot.get_motor_encoder()
+        enc1=self.roboclaw.ReadEncM1(self.ADDRESS)
+        enc2=self.roboclaw.ReadEncM2(self.ADDRESS)
+        if enc1 is None or self.prev_enc1 is None:
             return
 
-        d_left = (
-            (enc[0] - self.prev_enc[0]) +
-            (enc[1] - self.prev_enc[1])
-        ) / 2.0 * self.meters_per_tick
+        d_left = (enc1[1]-self.prev_enc1[1])* self.meters_per_tick
 
-        d_right = (
-            (enc[2] - self.prev_enc[2]) +
-            (enc[3] - self.prev_enc[3])
-        ) / 2.0 * self.meters_per_tick
+        d_right = (enc2[1]-self.prev_enc2[1])* self.meters_per_tick
 
-        self.prev_enc = enc
+        self.prev_enc1 = enc1
+        self.prev_enc2 = enc2
 
         d_s = (d_right + d_left) / 2.0
         d_theta = (d_right - d_left) / self.wheel_dist
