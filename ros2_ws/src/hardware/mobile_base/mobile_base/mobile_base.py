@@ -3,7 +3,8 @@ import time
 import math
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
-from tf2_ros import TransformException
+from tf2_ros import TransformBroadcaster
+from geometry_msgs.msg import TransformStamped
 from tf2_ros.buffer import Buffer #tf2 = transformation for odometry and base_link
 #from Rosmaster_Lib import Rosmaster
 from mobile_base import roboclaw_3
@@ -27,9 +28,11 @@ class MobileBaseNode(Node):
             10
         )
 
+        self.tf_broadcaster = TransformBroadcaster(self)
+
         self.data = False
         self.notdata = 0
-        self.limit = 5 
+        self.limit = 5
 
         self.max_pwm = 60
         self.linear = 0.0
@@ -50,16 +53,14 @@ class MobileBaseNode(Node):
         self.prev_enc1 = self.roboclaw.ReadEncM1(self.ADDRESS)
         self.prev_enc2 = self.roboclaw.ReadEncM2(self.ADDRESS)
 
-        self.timer = self.create_timer(0.1, self.update_odometry) #0.05 anterior
-        #Puro 0.8 a la chihuahua
+        self.timer = self.create_timer(0.1, self.update_odometry) #0.05 anteriormente
 
-
-        self.get_logger().info("Odometría")
+        self.get_logger().info("Odometria con TF")
 
     def cmd_vel_callback(self, msg):
         self.linear = msg.linear.x
         self.angular = msg.angular.z
-        self.data = True 
+        self.data = True
         self.notdata = 0
         self.drive()
 
@@ -68,7 +69,7 @@ class MobileBaseNode(Node):
         pwm_angular = int(self.angular * self.max_pwm)
 
         left = pwm_linear - pwm_angular
-        right = (pwm_linear + pwm_angular)*-1
+        right = (pwm_linear + pwm_angular) * -1
 
         left = max(min(left, 127), -127)
         right = max(min(right, 127), -127)
@@ -87,12 +88,10 @@ class MobileBaseNode(Node):
         self.roboclaw.ForwardM2(self.ADDRESS, 0)
 
     def update_odometry(self):
-        #enc=self.bot.get_motor_encoder()
         if not self.data:
             self.notdata += 1
         else:
             self.data = False
-            self.notdata = 0
 
         if self.notdata >= self.limit:
             self.stop()
@@ -116,10 +115,25 @@ class MobileBaseNode(Node):
         self.x += d_s * math.cos(self.theta)
         self.y += d_s * math.sin(self.theta)
 
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = "odom"
+        t.child_frame_id = "base_link"
+
+        t.transform.translation.x = self.x
+        t.transform.translation.y = self.y
+        t.transform.translation.z = 0.0
+
+        t.transform.rotation.x = 0.0
+        t.transform.rotation.y = 0.0
+        t.transform.rotation.z = math.sin(self.theta / 2.0)
+        t.transform.rotation.w = math.cos(self.theta / 2.0)
+
+        self.tf_broadcaster.sendTransform(t)
+
         self.get_logger().info(
             f"x={self.x:.4f} y={self.y:.4f} theta={self.theta:.4f}"
         )
-        
 
 def main(args=None):
     rclpy.init(args=args)
@@ -127,7 +141,6 @@ def main(args=None):
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()
