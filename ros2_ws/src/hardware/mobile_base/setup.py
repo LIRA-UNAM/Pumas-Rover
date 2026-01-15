@@ -25,7 +25,8 @@ setup(
     entry_points={
         'console_scripts': [
             'mobile_base = mobile_base.mobile_base:main',
-            'speed_control = mobile_base.speed_control:main',
+            'speed_keyboard = mobile_base.speed_keyboard:main',
+            'remote_control = mobile_base.remote_control:main',
         ],
     },
 )

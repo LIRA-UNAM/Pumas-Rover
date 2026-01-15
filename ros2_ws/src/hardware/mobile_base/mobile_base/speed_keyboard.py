@@ -8,7 +8,7 @@ import sys, select, termios, tty
 class KeyboardSpeed(Node):
 
     def __init__(self):
-        super().__init__('comandos_publisher')
+        super().__init__('comands_publisher')
         self.publisher_ = self.create_publisher(Twist, 'cmd_vel', 10)
         self.get_logger().info('Linear and angular speed')
         timer_period = 0.1

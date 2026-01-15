@@ -27,6 +27,10 @@ class MobileBaseNode(Node):
             10
         )
 
+        self.data = False
+        self.notdata = 0
+        self.limit = 5 
+
         self.max_pwm = 60
         self.linear = 0.0
         self.angular = 0.0
@@ -46,13 +50,17 @@ class MobileBaseNode(Node):
         self.prev_enc1 = self.roboclaw.ReadEncM1(self.ADDRESS)
         self.prev_enc2 = self.roboclaw.ReadEncM2(self.ADDRESS)
 
-        self.timer = self.create_timer(0.05, self.update_odometry)
+        self.timer = self.create_timer(0.1, self.update_odometry) #0.05 anterior
+        #Puro 0.8 a la chihuahua
+
 
         self.get_logger().info("Odometría")
 
     def cmd_vel_callback(self, msg):
         self.linear = msg.linear.x
         self.angular = msg.angular.z
+        self.data = True 
+        self.notdata = 0
         self.drive()
 
     def drive(self):
@@ -74,16 +82,29 @@ class MobileBaseNode(Node):
         else:
             self.roboclaw.BackwardM2(self.ADDRESS, -right)
 
+    def stop(self):
+        self.roboclaw.ForwardM1(self.ADDRESS, 0)
+        self.roboclaw.ForwardM2(self.ADDRESS, 0)
+
     def update_odometry(self):
         #enc=self.bot.get_motor_encoder()
-        enc1=self.roboclaw.ReadEncM1(self.ADDRESS)
-        enc2=self.roboclaw.ReadEncM2(self.ADDRESS)
+        if not self.data:
+            self.notdata += 1
+        else:
+            self.data = False
+            self.notdata = 0
+
+        if self.notdata >= self.limit:
+            self.stop()
+            return
+
+        enc1 = self.roboclaw.ReadEncM1(self.ADDRESS)
+        enc2 = self.roboclaw.ReadEncM2(self.ADDRESS)
         if enc1 is None or self.prev_enc1 is None:
             return
 
-        d_left = (enc1[1]-self.prev_enc1[1])* self.meters_per_tick
-
-        d_right = (enc2[1]-self.prev_enc2[1])* self.meters_per_tick
+        d_left = (enc1[1] - self.prev_enc1[1]) * self.meters_per_tick
+        d_right = (enc2[1] - self.prev_enc2[1]) * self.meters_per_tick
 
         self.prev_enc1 = enc1
         self.prev_enc2 = enc2
