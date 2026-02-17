@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.duration import Duration
+from rclpy.time import Time
 
 from geometry_msgs.msg import PointStamped
 from tf2_ros import Buffer, TransformListener
@@ -22,28 +23,21 @@ class TransformPointNode(Node):
             10
         )
 
-        self.get_logger().info('TF point transform node started')
-
+        self.get_logger().info('TRANSFORMADA')
 
     def point_callback(self, msg: PointStamped):
 
-        if not self.tf_buffer.can_transform(
-            'link_base',
-            msg.header.frame_id,
-            msg.header.stamp,
-            timeout=Duration(seconds=0.2)
-        ):
-            self.get_logger().warn('TF not available yet')
-            return
-
+        
         try:
+           
             transform = self.tf_buffer.lookup_transform(
-                'link_base',
-                msg.header.frame_id,
-                msg.header.stamp,
+                'link_base',          
+                msg.header.frame_id,  
+                Time(),               
                 timeout=Duration(seconds=0.5)
             )
 
+            
             point_base = tf2_geometry_msgs.do_transform_point(
                 msg,
                 transform
@@ -57,15 +51,22 @@ class TransformPointNode(Node):
             )
 
         except Exception as e:
-            self.get_logger().warn(f'TF failed: {e}')
+            self.get_logger().warn(
+                f'Esperando TF... {e}'
+            )
 
 
 def main():
     rclpy.init()
     node = TransformPointNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':
