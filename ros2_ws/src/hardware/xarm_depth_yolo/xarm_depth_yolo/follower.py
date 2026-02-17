@@ -1,92 +1,68 @@
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32
-from geometry_msgs.msg import TwistStamped
+import math
+from geometry_msgs.msg import PointStamped
+from xarm_msgs.msg import RobotMsg
 
-class VisualServoNode(Node):
+
+class FollowerTest(Node):
     def __init__(self):
-        super().__init__('visual_servo_node')
-        self.Kp = 0.0009        # Ganancia 
-        self.MAX_SPEED = 0.2    # Velocidad límite 
-        self.DEADBAND = 8.0    
-        self.sub_error = self.create_subscription(
-            Float32, 
-            '/yolo/pixel_error_x', 
-            self.error_callback, 
-            10
-        )
+        super().__init__('follower_test_node')
+
+        self.current_x = None
+        self.current_y = None
+        self.current_z = None
+        self.robot_ready = False
 
         
-        self.pub_vel = self.create_publisher(
-            TwistStamped, 
-            '/servo_server/delta_twist_cmds', 
-            10
-        )
-        
-        
-        self.last_msg_time = self.get_clock().now()
-        self.timer = self.create_timer(0.1, self.safety_check)
-
-        self.get_logger().info('FOllower')
-
-    def error_callback(self, msg):
-        self.last_msg_time = self.get_clock().now()
-        error_pixels = msg.data
-
-        
-        if abs(error_pixels) < self.DEADBAND:
-            self.stop_robot()
-            return  
-
-        
-        vel_y = self.Kp * error_pixels 
-
+        self.state_sub = self.create_subscription(RobotMsg, '/xarm/robot_states', self.state_callback, 10)
        
-        vel_y = max(min(vel_y, self.MAX_SPEED), -self.MAX_SPEED)
+        self.target_sub = self.create_subscription(PointStamped, '/stone/target_pose_base', self.calc_loop, 10)
+
+        self.get_logger().info('Calculando trayectorias:')
+
+    def state_callback(self, msg):
+        # xArm reporta en mm
+        self.current_x = msg.pose[0]
+        self.current_y = msg.pose[1]
+        self.current_z = msg.pose[2]
+        self.robot_ready = True
+
+    def calc_loop(self, msg):
+        if not self.robot_ready: return
+
+        #mm
+        target_x_mm = msg.point.x * 1000.0
+        target_y_mm = msg.point.y * 1000.0
+
+        # ERROR
+        dx = target_x_mm - self.current_x
+        dy = target_y_mm - self.current_y
+        dist_error = math.sqrt(dx**2 + dy**2)
+
+        # SIGUIENTE POSICIÓN
+        Kp = 0.5
+        next_x = self.current_x + (dx * Kp)
+        next_y = self.current_y + (dy * Kp)
+        safe_z = 450.0 # Altura de seguridad fija
 
         
-        self.publish_velocity(vel_y)
-
-    def publish_velocity(self, vy):
-        twist = TwistStamped()
-        twist.header.stamp = self.get_clock().now().to_msg()
-        twist.header.frame_id = 'link_base'  
-
+        print("-" * 50)
+        print(f"POSE ACTUAL:  X={self.current_x:.1f}, Y={self.current_y:.1f} , Z={self.current_z:.1f} (mm)")
+        print(f"TARGET: X={target_x_mm:.1f}, Y={target_y_mm:.1f} (mm)")
+        print(f"ERROR:         {dist_error:.1f} mm")
         
-        twist.twist.linear.y = float(vy)
-        
-        
-        twist.twist.linear.x = 0.0
-        twist.twist.linear.z = 0.0
-        twist.twist.angular.x = 0.0
-        twist.twist.angular.y = 0.0
-        twist.twist.angular.z = 0.0
+        if dist_error < 15.0:
+            print("ESTATUS:       CENTRADO")
+        else:
+            print(f"PREDICCIÓN:    El robot se moverá a -> X={next_x:.1f}, Y={next_y:.1f}, Z={safe_z}")
+        print("-" * 50)
 
-        self.pub_vel.publish(twist)
-        
-        
-        self.get_logger().info(f'Error: {vy/self.Kp:.1f}px -> Vel Y: {vy:.4f} m/s')
-
-    def stop_robot(self):
-        # Manda velocidad 0 para frenar suavemente
-        self.publish_velocity(0.0)
-
-    def safety_check(self):
-        
-        time_diff = (self.get_clock().now() - self.last_msg_time).nanoseconds / 1e9
-        if time_diff > 0.5:
-            self.stop_robot()
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = VisualServoNode()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        node.stop_robot() 
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
+def main():
+    rclpy.init()
+    node = FollowerTest()
+    rclpy.spin(node)
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
