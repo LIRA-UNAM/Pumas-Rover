@@ -62,7 +62,9 @@ class RemoteControl(Node):
     
     def timer_callback(self):
         
-            
+        self.current_linear_speed = 0.0
+        self.current_angular_speed = 0.0
+        
         if self.buttons[2] == 1:
             self.current_linear_speed = 0.0
             self.current_angular_speed = 0.0
@@ -70,31 +72,30 @@ class RemoteControl(Node):
 
         if self.axes[0] > 0.2:
                 
-            self.current_linear_speed = 0.0
+            
             self.current_angular_speed = 2*self.axes[0]
-            self.get_logger().info(f"Left_turn")
+            #self.get_logger().info(f"Left_turn")
 
-        elif self.axes[0] < -0.2:
+        if self.axes[0] < -0.2:
 
-            self.current_linear_speed = 0.0
+            
             self.current_angular_speed = 2*self.axes[0]
-            self.get_logger().info(f"Right_turn")
+            #self.get_logger().info(f"Right_turn")
 
-        elif self.axes[1] > 0.2:
+        if self.axes[1] > 0.2:
                 
             self.current_linear_speed = 2*self.axes[1]
-            self.current_angular_speed = 0.0
-            self.get_logger().info(f"Foward")
+            
+            #self.get_logger().info(f"Foward")
 
-        elif self.axes[1] < -0.2:
+        if self.axes[1] < -0.2:
 
             self.current_linear_speed = 2*self.axes[1]
-            self.current_angular_speed = 0.0
-            self.get_logger().info(f"Back")
+            
+            #self.get_logger().info(f"Back")
 
-        else:
-            self.current_linear_speed = 0.0
-            self.current_angular_speed = 0.0
+        
+            
 
         msg = Twist()
         msg.linear.x = self.current_linear_speed
