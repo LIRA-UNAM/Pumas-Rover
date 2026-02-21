@@ -52,6 +52,7 @@ class MobileBaseNode(Node):
         self.notdata = 0
         self.limit = 5
 
+        self.accel_max = 8000
         self.max_pwm = 60
         self.linear = 0.0
         self.angular = 0.0
@@ -156,7 +157,7 @@ class MobileBaseNode(Node):
             wheel_information = [[self.linear,self.linear,self.linear,self.linear,self.linear,self.linear],[0,0,0,0,0,0]]
 
         wheel_angles = self.radian_to_dynamixel (wheel_information[1])
-            
+        wheel_speeds = self.meters_to_ticks_ps (wheel_information[0])
 
         self.goal_position[0] = wheel_angles[2]
         self.goal_position[1] = wheel_angles[0]
@@ -177,20 +178,26 @@ class MobileBaseNode(Node):
         left = max(min(left, 127), -127)
         right = max(min(right, 127), -127)
 
-        if (self.linear > 0):
-            self.roboclaw_front.ForwardM1(self.ADDRESS, wheel_information[0][0] * self.max_pwm)
-            self.roboclaw_center.ForwardM1(self.ADDRESS, wheel_information[0][1] * self.max_pwm)
-            self.roboclaw_rear.ForwardM1(self.ADDRESS, wheel_information[0][2] * self.max_pwm)
-            self.roboclaw_front.ForwardM2(self.ADDRESS, wheel_information[0][3] * self.max_pwm)
-            self.roboclaw_center.ForwardM2(self.ADDRESS, wheel_information[0][4] * self.max_pwm)
-            self.roboclaw_rear.ForwardM2(self.ADDRESS, wheel_information[0][5] * self.max_pwm)
-        else:
-            self.roboclaw_front.BackwardM1(self.ADDRESS, wheel_information[0][0] * self.max_pwm)
-            self.roboclaw_center.BackwardM1(self.ADDRESS, wheel_information[0][1] * self.max_pwm)
-            self.roboclaw_rear.BackwardM1(self.ADDRESS, wheel_information[0][2] * self.max_pwm)
-            self.roboclaw_front.BackwardM2(self.ADDRESS, wheel_information[0][3] * self.max_pwm)
-            self.roboclaw_center.BackwardM2(self.ADDRESS, wheel_information[0][4] * self.max_pwm)
-            self.roboclaw_rear.BackwardM2(self.ADDRESS, wheel_information[0][5] * self.max_pwm)
+        self.roboclaw_front.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[0])))
+        self.roboclaw_center.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[1])))
+        self.roboclaw_rear.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[2])))
+        self.roboclaw_front.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[3])))
+        self.roboclaw_center.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[4])))
+        self.roboclaw_rear.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[5])))
+        # if (self.linear > 0):
+        #     self.roboclaw_front.ForwardM1(self.ADDRESS, wheel_information[0][0] * self.max_pwm)
+        #     self.roboclaw_center.ForwardM1(self.ADDRESS, wheel_information[0][1] * self.max_pwm)
+        #     self.roboclaw_rear.ForwardM1(self.ADDRESS, wheel_information[0][2] * self.max_pwm)
+        #     self.roboclaw_front.ForwardM2(self.ADDRESS, wheel_information[0][3] * self.max_pwm)
+        #     self.roboclaw_center.ForwardM2(self.ADDRESS, wheel_information[0][4] * self.max_pwm)
+        #     self.roboclaw_rear.ForwardM2(self.ADDRESS, wheel_information[0][5] * self.max_pwm)
+        # else:
+        #     self.roboclaw_front.BackwardM1(self.ADDRESS, wheel_information[0][0] * self.max_pwm)
+        #     self.roboclaw_center.BackwardM1(self.ADDRESS, wheel_information[0][1] * self.max_pwm)
+        #     self.roboclaw_rear.BackwardM1(self.ADDRESS, wheel_information[0][2] * self.max_pwm)
+        #     self.roboclaw_front.BackwardM2(self.ADDRESS, wheel_information[0][3] * self.max_pwm)
+        #     self.roboclaw_center.BackwardM2(self.ADDRESS, wheel_information[0][4] * self.max_pwm)
+        #     self.roboclaw_rear.BackwardM2(self.ADDRESS, wheel_information[0][5] * self.max_pwm)
 
         
         # if (speed_left_edge >= 0):
@@ -212,8 +219,10 @@ class MobileBaseNode(Node):
 
         if linear != 0:
             sign = radius/abs(radius)
+            sign2 = linear/abs(linear)
         else:
             sign = angular/abs(angular)
+            sign2 = 1
 
         radius_left_frontal = math.sqrt(self.height**2+radius_left_center**2) * (sign)
         radius_right_frontal = math.sqrt(self.height**2+radius_right_center**2) * (sign)
@@ -230,12 +239,12 @@ class MobileBaseNode(Node):
 
         #speeds:
 
-        v_lf = abs(radius_left_frontal * angular)
-        v_lc = abs(radius_left_center * angular)
-        v_lr = abs(radius_right_frontal * angular)
-        v_rf = abs(radius_right_frontal * angular)
-        v_rc = abs(radius_right_center * angular)
-        v_rr = abs(radius_right_frontal * angular)
+        v_lf = abs(radius_left_frontal * angular) * sign2
+        v_lc = abs(radius_left_center * angular) * sign2
+        v_lr = abs(radius_right_frontal * angular)* sign2
+        v_rf = abs(radius_right_frontal * angular)* sign2
+        v_rc = abs(radius_right_center * angular)* sign2
+        v_rr = abs(radius_right_frontal * angular)* sign2
 
         return [[v_lf,v_lc,v_lr,v_rf,v_rc,v_rr],[angle_left_front,0,angle_left_rear,angle_right_front,0,angle_right_rear]]
 
@@ -247,6 +256,12 @@ class MobileBaseNode(Node):
         angles[5] = 2048 + (4096/(2*math.pi))* angles[5]
 
         return angles
+    
+    def meters_to_ticks_ps (self,speeds):
+        c=0
+        for c in range(6):
+            speeds[c] = speeds [c]/self.meters_per_tick
+        return speeds
 
 
     def stop(self):
