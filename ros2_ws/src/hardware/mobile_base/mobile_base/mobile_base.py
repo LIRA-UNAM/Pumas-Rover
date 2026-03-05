@@ -22,7 +22,7 @@ BAUDRATE = 57600
 DEVICE_NAME = '/dev/ttyUSB0' 
 TORQUE_ENABLE = 1  
 TORQUE_DISABLE = 0 
-NUM_SERVOS = 2
+NUM_SERVOS = 4
 
 class MobileBaseNode(Node): 
     def __init__(self):
@@ -99,14 +99,10 @@ class MobileBaseNode(Node):
         self.roboclaw_center.ResetEncoders(self.ADDRESS)
         self.roboclaw_rear.ResetEncoders(self.ADDRESS)
 
-        #self.prev_enc = self.bot.get_motor_encoder()
+        
         self.prev_enc1 = self.roboclaw_front.ReadEncM1(self.ADDRESS)
         self.prev_enc2 = self.roboclaw_front.ReadEncM2(self.ADDRESS)
-        self.prev_enc1 = self.roboclaw_center.ReadEncM1(self.ADDRESS)
-        self.prev_enc2 = self.roboclaw_center.ReadEncM2(self.ADDRESS)
-        self.prev_enc1 = self.roboclaw_rear.ReadEncM1(self.ADDRESS)
-        self.prev_enc2 = self.roboclaw_rear.ReadEncM2(self.ADDRESS)
-
+        
         self.timer = self.create_timer(0.1, self.update_odometry) #0.05 anteriormente
 
         self.get_logger().info("Odometria con TF")
