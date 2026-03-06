@@ -1,58 +1,60 @@
+
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import PointStamped
-from std_msgs.msg import Int32
+from vision_msgs.msg import Detection2DArray
+from std_msgs.msg import String
 
-class YoloID(Node):
+
+class YoloSelector(Node):
 
     def __init__(self):
-        super().__init__('yolo_id')
+        super().__init__('yolo_selector')
 
-        self.sub_pt = self.create_subscription(
-            PointStamped,
-            '/yolo/objects',
-            self.pt_cb,
-            50
-        )
-
-        self.sub_id = self.create_subscription(
-            Int32,
-            '/yolo/object_id',
-            self.id_cb,
-            50
-        )
-
-        self.pub = self.create_publisher(
-            Int32,
-            '/yolo/target_id',
+        self.sub = self.create_subscription(
+            Detection2DArray,
+            '/yolo/detections',
+            self.callback,
             10
         )
 
-        self.current_id = None
-        self.objects = {}
+        self.pub = self.create_publisher(
+            String,
+            '/yolo/selected_id',
+            10
+        )
 
-    def id_cb(self, msg):
-        self.current_id = msg.data
+        self.get_logger().info("YOLO IDs")
 
-    def pt_cb(self, msg):
-        if self.current_id is None:
+
+    def callback(self, msg):
+
+        if len(msg.detections) == 0:
             return
 
-        self.objects[self.current_id] = msg.point.z
+        closest = None
+        min_z = 999.0
 
-        if len(self.objects) == 0:
-            return
+        for det in msg.detections:
+            z = float(det.header.frame_id)
 
-        target = min(self.objects, key=self.objects.get)
+            if z < min_z:
+                min_z = z
+                closest = det.id
 
-        out = Int32()
-        out.data = target
-        self.pub.publish(out)
+        selected = String()
+        selected.data = closest
+        self.pub.publish(selected)
+
+        self.get_logger().info(f"Selected ID: {closest} Z={min_z:.3f}")
+
 
 def main():
     rclpy.init()
-    rclpy.spin(YoloID())
+    node = YoloSelector()
+    rclpy.spin(node)
+    node.destroy_node()
     rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()

@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'transform = xarm_depth_yolo.transform:main',
+            'follower = xarm_depth_yolo.follower:main',
         ],
     },
 )

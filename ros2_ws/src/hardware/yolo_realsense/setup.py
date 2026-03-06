@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'yolo_rs_test = yolo_realsense.yolo_rs_test:main',
             'yolo_id = yolo_realsense.yolo_id:main',
+            'yolo_target = yolo_realsense.yolo_target:main',
         ],
     },
 )
