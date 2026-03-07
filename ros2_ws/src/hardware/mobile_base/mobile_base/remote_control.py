@@ -26,6 +26,7 @@ class RemoteControl(Node):
 
         self.buttons = [0,0,0,0,0,0,0,0,0,0,0,0,0,0]
         self.axes = [0,0,0,0,0,0]
+        self.increased_speed = 1
         
             
 
@@ -73,24 +74,24 @@ class RemoteControl(Node):
         if self.axes[0] > 0.2:
                 
             
-            self.current_angular_speed = 2*self.axes[0]
+            self.current_angular_speed = self.increased_speed*self.axes[0]
             #self.get_logger().info(f"Left_turn")
 
         if self.axes[0] < -0.2:
 
             
-            self.current_angular_speed = 2*self.axes[0]
+            self.current_angular_speed = self.increased_speed*self.axes[0]
             #self.get_logger().info(f"Right_turn")
 
         if self.axes[1] > 0.2:
                 
-            self.current_linear_speed = 2*self.axes[1]
+            self.current_linear_speed = self.increased_speed*self.axes[1]
             
             #self.get_logger().info(f"Foward")
 
         if self.axes[1] < -0.2:
 
-            self.current_linear_speed = 2*self.axes[1]
+            self.current_linear_speed = self.increased_speed*self.axes[1]
             
             #self.get_logger().info(f"Back")
 
