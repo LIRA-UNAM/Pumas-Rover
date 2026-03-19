@@ -37,8 +37,18 @@ class MobileBaseNode(Node):
         
         #Open comunication with the 3 roboclaws
         self.roboclaw_front.Open()
+        if not self.roboclaw_front.Open():
+            self.get_logger().fatal("Failed to open the front roboclaw")
+            return
         self.roboclaw_center.Open()
+        if not self.roboclaw_center.Open():
+            self.get_logger().fatal("Failed to open the center roboclaw")
+            return
         self.roboclaw_rear.Open()
+        if not self.roboclaw_rear.Open():
+            self.get_logger().fatal("Failed to open the rear roboclaw")
+            rclpy.shutdown()
+            return
 
         
 
@@ -49,6 +59,8 @@ class MobileBaseNode(Node):
             self.cmd_vel_callback,
             10
         )
+
+        self.stop_driver = False #Variable to control if the robot should stop or not when it doesn't receive data
 
         #Broadcaster for odometry transformation
         self.tf_broadcaster = TransformBroadcaster(self)
@@ -149,7 +161,9 @@ class MobileBaseNode(Node):
         self.angular = msg.angular.z
         self.data = True
         self.notdata = 0
-        self.drive()
+        if self.stop_driver == False:
+            self.drive()
+        
 
     def setup_dynamixel(self, dxl_id):
 
@@ -162,9 +176,17 @@ class MobileBaseNode(Node):
         for c in range(NUM_SERVOS):
             
             param = [DXL_LOBYTE(int(round(self.goal_position[c]))),DXL_HIBYTE(int(round(self.goal_position[c])))]
-            self.groupSyncWrite.addParam(self.DXL_ID[c], param)
+            dxl_addparam_result = self.groupSyncWrite.addParam(self.DXL_ID[c], param)
+            if dxl_addparam_result != True:
+                self.get_logger().error(f'Failed to addparam for ID {self.DXL_ID[c]}')
+                return
 
-        self.groupSyncWrite.txPacket()
+        dxl_comm_result = self.groupSyncWrite.txPacket()
+        if dxl_comm_result != COMM_SUCCESS:
+            self.get_logger().error(f'Failed to set initial position: {self.packet_handler.getTxRxResult(dxl_comm_result)}')
+            return
+        else:
+            self.get_logger().info('Succeeded to set initial position.')
         self.groupSyncWrite.clearParam()
 
     def drive(self):
@@ -189,10 +211,19 @@ class MobileBaseNode(Node):
         #Prepare and save new angles in dynamixel servos
         for c in range(NUM_SERVOS):
             param = [DXL_LOBYTE(int(round(self.goal_position[c]))),DXL_HIBYTE(int(round(self.goal_position[c])))]
-            self.groupSyncWrite.addParam(self.DXL_ID[c], param)
+            dxl_addparam_result = self.groupSyncWrite.addParam(self.DXL_ID[c], param)
+            if dxl_addparam_result != True:
+                self.get_logger().error(f'Failed to addparam for ID {self.DXL_ID[c]}')
+                return
 
         #Send and move dynamixel servos with the new save angles
-        self.groupSyncWrite.txPacket()
+        dxl_comm_result = self.groupSyncWrite.txPacket()
+        if dxl_comm_result != COMM_SUCCESS:
+            self.get_logger().error(f'Failed to set wheel positions: {self.packet_handler.getTxRxResult(dxl_comm_result)}')
+            self.stop_driver = True
+            return
+        else:
+            self.get_logger().info('Succeeded to set wheel positions.')
         self.groupSyncWrite.clearParam()
 
 
@@ -205,7 +236,8 @@ class MobileBaseNode(Node):
         self.roboclaw_center.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[4])))
         self.roboclaw_rear.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[5])))
         
-        
+       
+
 
 
     def get_wheel_configuration (self,linear,angular): #FUNCTION TO OBTAIN WHEEL INFORMATION
