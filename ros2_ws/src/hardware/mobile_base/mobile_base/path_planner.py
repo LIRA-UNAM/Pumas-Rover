@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PointStamped, Twist
 import time
+import math
 
 
 SM_WAITING = 0      
@@ -59,7 +60,9 @@ class PathPlanner(Node):
             msg.linear.x = min(0.2, (self.target_z - 0.3) * 0.5)
             
             
-            msg.angular.z = -self.target_x * 0.8 
+            # msg.angular.z = -self.target_x * 0.8 
+
+            msg.angular.z = 0.7*((2/(1+math.exp(-self.target_x/0.5)))-1)
             
             self.get_logger().info(f'Acercándose... Z: {self.target_z:.2f}m', throttle_duration_sec=1.0)
             self.publisher.publish(msg)
