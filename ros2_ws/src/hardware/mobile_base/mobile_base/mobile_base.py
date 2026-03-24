@@ -152,7 +152,7 @@ class MobileBaseNode(Node):
         self.prev_enc2_rear = self.roboclaw_rear.ReadEncM2(self.ADDRESS) [1]
         
         #Calculate odometry every 0.1 seconds
-        self.timer = self.create_timer(0.1, self.update_odometry) #0.05 anteriormente
+        self.timer = self.create_timer(0.05, self.update_odometry) #0.1 anteriormente
 
         self.get_logger().info("Odometria con TF")
 
@@ -219,11 +219,10 @@ class MobileBaseNode(Node):
         #Send and move dynamixel servos with the new save angles
         dxl_comm_result = self.groupSyncWrite.txPacket()
         if dxl_comm_result != COMM_SUCCESS:
-            self.get_logger().error(f'Failed to set wheel positions: {self.packet_handler.getTxRxResult(dxl_comm_result)}')
+            #self.get_logger().error(f'Failed to set wheel positions: {self.packet_handler.getTxRxResult(dxl_comm_result)}')
             self.stop_driver = True
             return
-        else:
-            self.get_logger().info('Succeeded to set wheel positions.')
+        
         self.groupSyncWrite.clearParam()
 
 
