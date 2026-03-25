@@ -23,6 +23,7 @@ DEVICE_NAME = '/dev/ttyUSB0'
 TORQUE_ENABLE = 1  
 TORQUE_DISABLE = 0 
 NUM_SERVOS = 4
+ANGLE_RES = 12 #aprox 4096/360
 
 class MobileBaseNode(Node): 
     def __init__(self):
@@ -115,6 +116,7 @@ class MobileBaseNode(Node):
 
         #Variable to control dynamixels
         self.goal_position = [2048,2048,2048,2048] #Initial position for each dynamixel 
+        self.prev_goal_position = [2048,2048,2048,2048] #Previous position for each dynamixel, used for odometry calculations
         self.DXL_ID = [1,3,4,2] #ID for all 4 motors #1&3 = left wheels, 4&2 = right wheels
 
         #Preparation of dynamixels using the SDK Dynamixel
@@ -210,8 +212,12 @@ class MobileBaseNode(Node):
 
         #Prepare and save new angles in dynamixel servos
         for c in range(NUM_SERVOS):
-            param = [DXL_LOBYTE(int(round(self.goal_position[c]))),DXL_HIBYTE(int(round(self.goal_position[c])))]
-            dxl_addparam_result = self.groupSyncWrite.addParam(self.DXL_ID[c], param)
+            if (self.goal_position[c] - self.prev_goal_position[c]) > ANGLE_RES or (self.goal_position[c] - self.prev_goal_position[c]) < -ANGLE_RES: #Only update if the angle change is bigger than a threshold, to avoid unnecessary updates
+                param = [DXL_LOBYTE(int(round(self.goal_position[c]))),DXL_HIBYTE(int(round(self.goal_position[c])))]
+                dxl_addparam_result = self.groupSyncWrite.addParam(self.DXL_ID[c], param)
+            else: 
+                param = [DXL_LOBYTE(int(round(self.prev_goal_position[c]))),DXL_HIBYTE(int(round(self.prev_goal_position[c])))]
+                dxl_addparam_result = self.groupSyncWrite.addParam(self.DXL_ID[c], param)
             if dxl_addparam_result != True:
                 self.get_logger().error(f'Failed to addparam for ID {self.DXL_ID[c]}')
                 return
@@ -229,10 +235,10 @@ class MobileBaseNode(Node):
         #Printing speeds using roboclaws
 
         self.roboclaw_front.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[0])))
-        self.roboclaw_center.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[1])))
+        self.roboclaw_center.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[1]))) #Por conexión física
         self.roboclaw_rear.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[2])))
         self.roboclaw_front.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[3])))
-        self.roboclaw_center.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[4])))
+        self.roboclaw_center.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[4]))) #Por conexión física
         self.roboclaw_rear.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[5])))
         
        
@@ -250,11 +256,13 @@ class MobileBaseNode(Node):
             sign = radius/abs(radius)
             sign2 = linear/abs(linear)
             sign3 = 1
+            sign4 = -1
             
         else:
             sign = angular/abs(angular)
             sign2 = 1
             sign3 = (angular/abs(angular))
+            sign4 = sign3
             
 
         radius_left_frontal = math.sqrt(self.height**2+radius_left_center**2) * (sign)
@@ -269,10 +277,10 @@ class MobileBaseNode(Node):
 
         #Wheel speeds:
         v_lf = abs(radius_left_frontal * angular) * sign2
-        v_lc = abs(radius_left_center * angular) * sign2 * sign3
+        v_lc = abs(radius_left_center * angular) * sign2 * -sign4
         v_lr = abs(radius_right_frontal * angular)* sign2
         v_rf = abs(radius_right_frontal * angular)* sign2
-        v_rc = abs(radius_right_center * angular)* sign2 * -sign3
+        v_rc = abs(radius_right_center * angular)* sign2 * sign3
         v_rr = abs(radius_right_frontal * angular)* sign2
 
         return [[v_lf,v_lc,v_lr,v_rf,v_rc,v_rr],[angle_left_front,0,angle_left_rear,angle_right_front,0,angle_right_rear]]

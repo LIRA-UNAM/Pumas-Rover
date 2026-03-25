@@ -20,12 +20,12 @@ class PathPlanner(Node):
 
         self.timer = self.create_timer(0.05, self.read_tf)  #0.1 anteriormente
 
-        #ros2 topic pub --once /goal geometry_msgs/msg/Point "{x: 1.0, y: 0.0, z: 0.0}"
+        #ros2 topic pub --once /objective_point geometry_msgs/msg/Point "{x: 1.0, y: 0.0, z: 0.0}"
 
 
         self.subscription = self.create_subscription(
             Point,
-            'goal',
+            'objective_point',
             self.target_callback,
             10)
             
