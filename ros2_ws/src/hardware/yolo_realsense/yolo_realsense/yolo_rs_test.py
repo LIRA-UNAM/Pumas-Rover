@@ -16,7 +16,7 @@ class YoloStoneDetector(Node):
         self.bridge = CvBridge()
 
         # Modelo
-        weights_path = os.path.expanduser('~/Proyectos/Brazo_repo/dev_ws/weights/best.pt')
+        weights_path = os.path.expanduser('~/Pumas-Rover/ros2_ws/weights/best.pt')
         self.model = YOLO(weights_path)
 
         self.fx = self.fy = self.cx = self.cy = None

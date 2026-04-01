@@ -103,7 +103,7 @@ class MobileBaseNode(Node):
         self.diameter = 0.107
         self.radius = self.diameter / 2.0
         self.width = 0.32 #Rover measure of left wheels to right wheels
-        self.height = 0.29 #Rover measure of center wheels to front wheels
+        self.height = 0.28 #Rover measure of center wheels to front wheels
         self.ppr = 4400
        
         self.meters_per_tick = (math.pi * self.diameter) / self.ppr #For encoders
@@ -115,8 +115,8 @@ class MobileBaseNode(Node):
         self.theta = 0.0
 
         #Variable to control dynamixels
-        self.goal_position = [2048,2048,2048,2048] #Initial position for each dynamixel 
-        self.prev_goal_position = [2048,2048,2048,2048] #Previous position for each dynamixel, used for odometry calculations
+        self.goal_position = [2052,2048,2048,2048] #Initial position for each dynamixel 
+        self.prev_goal_position = [2052,2048,2048,2048] #Previous position for each dynamixel, used for odometry calculations
         self.DXL_ID = [1,3,4,2] #ID for all 4 motors #1&3 = left wheels, 4&2 = right wheels
 
         #Preparation of dynamixels using the SDK Dynamixel
@@ -225,7 +225,7 @@ class MobileBaseNode(Node):
         #Send and move dynamixel servos with the new save angles
         dxl_comm_result = self.groupSyncWrite.txPacket()
         if dxl_comm_result != COMM_SUCCESS:
-            #self.get_logger().error(f'Failed to set wheel positions: {self.packet_handler.getTxRxResult(dxl_comm_result)}')
+            self.get_logger().error(f'Failed to set wheel positions: {self.packet_handler.getTxRxResult(dxl_comm_result)}')
             self.stop_driver = True
             return
         
@@ -235,10 +235,10 @@ class MobileBaseNode(Node):
         #Printing speeds using roboclaws
 
         self.roboclaw_front.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[0])))
-        self.roboclaw_center.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[1]))) #Por conexión física
+        self.roboclaw_center.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[1]))) 
         self.roboclaw_rear.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[2])))
         self.roboclaw_front.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[3])))
-        self.roboclaw_center.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[4]))) #Por conexión física
+        self.roboclaw_center.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[4])))
         self.roboclaw_rear.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[5])))
         
        
@@ -277,17 +277,17 @@ class MobileBaseNode(Node):
 
         #Wheel speeds:
         v_lf = abs(radius_left_frontal * angular) * sign2
-        v_lc = abs(radius_left_center * angular) * sign2 * -sign4
+        v_lc = abs((radius_left_center-0.03) * angular) * sign2 * -sign4
         v_lr = abs(radius_right_frontal * angular)* sign2
         v_rf = abs(radius_right_frontal * angular)* sign2
-        v_rc = abs(radius_right_center * angular)* sign2 * sign3
+        v_rc = abs((radius_right_center+0.03) * angular)* sign2 * sign3
         v_rr = abs(radius_right_frontal * angular)* sign2
 
         return [[v_lf,v_lc,v_lr,v_rf,v_rc,v_rr],[angle_left_front,0,angle_left_rear,angle_right_front,0,angle_right_rear]]
 
     def radian_to_dynamixel (self,angles): #Angles in radian to angles in bits for each dynamixel
 
-        angles[0] = 2048 - (4096/(2*math.pi))* angles[0]
+        angles[0] = 2052 - (4096/(2*math.pi))* angles[0]
         angles[2] = 2048 - (4096/(2*math.pi))* angles[2]
         angles[3] = 2048 - (4096/(2*math.pi))* angles[3]
         angles[5] = 2048 - (4096/(2*math.pi))* angles[5]
@@ -341,6 +341,7 @@ class MobileBaseNode(Node):
         #Average value of right and left for imitate a differential robot
         dx_right = (dx_front_right + dx_rear_right) / 2.0
         dx_left = (dx_front_left + dx_rear_left) / 2.0
+        #dx_left = (dx_rear_left)
         
         #Update old encoder value for the next iteration
         self.prev_enc1_front = enc1_front

@@ -1,60 +1,59 @@
 import rclpy
 from rclpy.node import Node
 from tf2_ros import Buffer, TransformListener
-from geometry_msgs.msg import PointStamped, Twist, Point
+from geometry_msgs.msg import PointStamped, Twist, Point, PoseStamped, Pose
+from nav_msgs.msg import Path
 from rclpy.duration import Duration
 import time
 import math
+import numpy
+import heapq
 
-
-SM_WAITING = 0      
-SM_APPROACHING = 1  
-SM_ARRIVED = 2      
+   
 
 class PathPlanner(Node):
     def __init__(self):
         super().__init__('path_planner')
         
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        self.timer = self.create_timer(0.05, self.read_tf)  #0.1 anteriormente
+        #ros2 topic pub --once /goal geometry_msgs/msg/Point "{x: 4.0, y: 0.0, z: 0.0}"
 
-        #ros2 topic pub --once /goal geometry_msgs/msg/Point "{x: 1.0, y: 0.0, z: 0.0}"
+        #ros2 topic pub --once /start geometry_msgs/msg/Point "{x: 0.0, y: 0.0, z: 0.0}"
 
 
         self.subscription = self.create_subscription(
             Point,
             'goal',
-            self.target_callback,
+            self.goal_callback,
             10)
+        
+        self.subscription = self.create_subscription(
+            Point,
+            'start',
+            self.start_callback,
+            10)
+        self.pub_path = self.create_publisher(Path, '/path_planning/path', 10)
+        
             
         
-        self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)
         
         
-        self.state = SM_WAITING
-        self.last_msg_time = time.time()
-        self.target_x = 0.0
-        self.target_y = 0.0
-        self.move = False
+        self.goal_x = 0.0
+        self.goal_y = 0.0
+        self.robot_x = 0.0
+        self.robot_y = 0.0
+        self.goal = False
+        self.start = False
 
         #Para el mapa
         self.resolution = 0.1
         self.width = 2 #5 metros de prueba
         self.height = 2 #5 metros de prueba
 
-        self.origin_x = -self.width* self.resolution / 2.0
-        self.origin_y = -self.height * self.resolution / 2.0
-
-        self.map_data = [-1] * (int(self.width/self.resolution) * int(self.height/self.resolution))  # Quien sabe, -1 es desconocido, 0 es libre, 100 es ocupado
-
         self.robot_x = 0.0
         self.robot_y = 0.0
         self.robot_theta = 0.0
-
-        # Marcar el centro como libre para el inicio
-        self.map_data[int(self.height/2) * int(self.width/self.resolution) + int(self.width/2)] = 0
+        
         #Parael path
 
 
@@ -65,32 +64,46 @@ class PathPlanner(Node):
 
         self.path = []
         self.path_map = []
+
+        self.msg_path = Path()
+        self.get_logger().info(f"Path Planner node initialized")
+        self.timer = self.create_timer(0.05, self.control_loop)
         
         
-        self.timer = self.create_timer(0.1, self.control_loop)
-        self.get_logger().info('Path Planner para Rover Lunar iniciado.')
+        
 
 
 
-    def target_callback(self, msg):
+    def goal_callback(self, msg):
         
         self.target_x = msg.x
         self.target_y = msg.y
         self.last_msg_time = time.time()
-        self.move = True
+        self.goal = True
         self.get_logger().info(f"Meta recibida: x={self.target_x}, y={self.target_y}")
-        self.get_logger().info("Planificando ruta...")
-        path = self.a_star(int((self.robot_y-self.origin_y)/self.resolution), int((self.robot_x-self.origin_x)/self.resolution), int((self.target_y-self.origin_y)/self.resolution), int((self.target_x-self.origin_x)/self.resolution), numpy.reshape(numpy.asarray(self.map_data), (int(self.height/self.resolution), int(self.width/self.resolution))), numpy.zeros((int(self.height/self.resolution), int(self.width/self.resolution))), False)
+
+        
+    def start_callback(self, msg):
+        
+        self.robot_x = msg.x
+        self.robot_y = msg.y
+        self.last_msg_time = time.time()
+        self.start = True
+        self.get_logger().info(f"Inicio recibido: x={self.robot_x}, y={self.robot_y}")
+        
 
 
 
-    def a_star(self, start_r, start_c, goal_r, goal_c, grid_map, cost_map, use_diagonals):
-        [height, width] = grid_map.shape
-        in_open_list   = numpy.full(grid_map.shape, False)
-        in_closed_list = numpy.full(grid_map.shape, False)
-        g_values       = numpy.full(grid_map.shape, float("inf"))
-        f_values       = numpy.full(grid_map.shape, float("inf"))
-        parent_nodes   = numpy.full((grid_map.shape[0],grid_map.shape[1],2),-1)
+    def a_star(self, start_r, start_c, goal_r, goal_c, use_diagonals):
+
+        height = abs(goal_r - start_r)+1
+        width = abs(goal_c - start_c)+1
+
+        in_open_list   = numpy.full((height, width), False)
+        in_closed_list = numpy.full((height, width), False)
+        g_values       = numpy.full((height, width), float("inf"))
+        f_values       = numpy.full((height, width), float("inf"))
+        parent_nodes   = numpy.full((height, width, 2), -1)
         open_list = []
         if use_diagonals: #Every adjacent node has: [row_offset, col_offset, cost]
             adjacents = [[1,0,1],[0,1,1],[-1,0,1],[0,-1,1], [1,1,1.414], [-1,1,1.414], [-1,-1,1.414],[1,-1,1.414]]
@@ -110,9 +123,9 @@ class PathPlanner(Node):
             for r,c,cost in adjacents:
                 #print (r,c,cost)
                 neighbour_r,neighbour_c = row+r,col+c
-                if neighbour_r < 0 or neighbour_c < 0 or neighbour_r >= height or neighbour_c>=width or in_closed_list[neighbour_r,neighbour_c] or grid_map[neighbour_r, neighbour_c] > 50 or grid_map[neighbour_r, neighbour_c] == -1:
+                if neighbour_r < 0 or neighbour_c < 0 or neighbour_r >= height or neighbour_c>=width or in_closed_list[neighbour_r,neighbour_c]:
                     continue
-                g_new_value = g_values[row,col] + cost + cost_map[neighbour_r,neighbour_c]
+                g_new_value = g_values[row,col] + cost + 0 #cost_map[neighbour_r,neighbour_c]
                 if use_diagonals:
                     heuristic = math.sqrt(((goal_r-neighbour_r)**2)+((goal_c-neighbour_c)**2))
                     #Distancia euclidiana
@@ -129,87 +142,67 @@ class PathPlanner(Node):
                         in_open_list[neighbour_r,neighbour_c] == True
                         heapq.heappush(open_list, (f_values[neighbour_r,neighbour_c], [neighbour_r, neighbour_c]))
                     
-            #print (row,col,goal_r,goal_c)
-
-
-
-        #
-        # TODO:
-        # Implement the A* algorithm for path planning
-        # Map is considered to be a 2D array and start and goal positions
-        # are given as row-col pairs. You can follow these steps:
-        #
-        # WHILE open list is not empty and current is different from goal:
-        #     Get current node [row,col] from open list (see heapq.heappop function)
-        #     Mark current node as 'in_closed_list'
-        #     For [r,c,cost] in adjacent nodes:
-        #         Get r,c indices of neighbours of current node (check content of adjacents)
-        #         Discard if r,c is out of map, occupied, unknonw or in closed list, and continue
-        #         get a g-value g as: g-value of current node + dist + cost of neighbour r,c
-        #         Calculate heuristic 
-        #         Calculate f-value
-        #         IF g < g_vaprint (row,col,goal_r,goal_c)lue of neighbour r,c:
-        #             set g as g_value of neighbour r,c
-        #             set f as f_value of neighbour r,c
-        #             SET current node row,col as parent of neighbour r,c
-        #         If neighbour r,c is not in open list:
-        #             mark r,c as 'in_open_list'
-        #             add r,c to open list (check heapq.heappush)
-        #
-        
-        #
-        # END OF WHILE
-        #
         
         path = []
         while parent_nodes[goal_r, goal_c][0] != -1:
             path.insert(0, [goal_r, goal_c])
             [goal_r, goal_c] = parent_nodes[goal_r, goal_c]
-        return path
-    
+        return path #Esta devolviendo casillas, multiplicar por resolución para obtener coordenadas reales
 
-    def read_tf(self):
-        try:
-            t = self.tf_buffer.lookup_transform(
-                "odom",       # frame_id
-                "base_link",  # frame_id child
-                rclpy.time.Time()
-            )
+#Restar la posición actual para el algoritmo y luego sumarsela
 
-            self.robot_x = t.transform.translation.x
-            self.robot_y = t.transform.translation.y
+#Restar la posición actual a ambos, eso los desplazara en el mapa y dejara la posicon actual en el 0,0 del mapa, si el objetivo tiene un negativo, pasalo a positivo y luego recuerdalo
 
-            q = t.transform.rotation
-
-            # quathernion to euler (yaw)
-            self.robot_theta = 2 * math.atan2(q.z, q.w)
-
-            if self.robot_x-self.prev_x > 0.1 or self.robot_y-self.prev_y > 0.1:
-                
-                self.path.append((self.robot_x, self.robot_y))
-                mx, my = self.world_to_map(self.robot_x, self.robot_y)
-                self.map_data[my * self.width + mx] = 0  # Marcar como libre en el mapa
-                self.path_map.append((mx, my))
-                self.prev_x = self.robot_x
-                self.prev_y = self.robot_y
-                self.prev_theta = self.robot_theta
-
-
-                
-
-        except Exception as e:
-            self.get_logger().warn(f"No TF available: {str(e)}")
-
-
-
+#La ruta seran puro puntos positivos, multiplica a negativo aquellos que antes pasaste a positivo, luego vuelve a sumar la posición de inicio
 
     def stop_robot(self):
         self.publisher.publish(Twist())
+    
+    def control_loop(self):
+      
+            if self.goal and self.start:
+                self.get_logger().info(f"Iniciando planificación de ruta")
+                goal_x, goal_y = self.get_absolute_points()
+                self.path = self.a_star(0, 0, int(goal_y/self.resolution), int(goal_x/self.resolution),use_diagonals=True)
+                final_path = self.get_path_coordinates()
+                self.get_logger().info(f"Ruta calculada: {self.path}, coordenadas: {final_path}")
+                self.goal = False
+                self.start = False
+                self.publish_path(final_path)
+                #self.pub_path.publish(self.msg_path)
+                
 
-    def world_to_map(self, x, y):
-        mx = int((x - self.origin_x) / self.resolution)
-        my = int((y - self.origin_y) / self.resolution)
-        return mx, my
+
+
+    def get_absolute_points (self):
+        goal_x = abs(self.target_x - self.robot_x)
+        goal_y = abs(self.target_y - self.robot_y)
+        return goal_x, goal_y
+    
+    def get_path_coordinates(self):
+        path_coordinates = []
+        x_transform = self.target_x/abs(self.target_x)
+        y_transform = self.target_y/abs(self.target_y)
+        for cell in self.path:
+            x = cell[1] * self.resolution*x_transform + self.robot_x
+            y = cell[0] * self.resolution*y_transform + self.robot_y
+            path_coordinates.append((x, y))
+        return path_coordinates
+    
+    def publish_path(self, path_coordinates):
+        self.msg_path.header.frame_id = "map"
+        self.msg_path.header.stamp = self.get_clock().now().to_msg()
+        self.msg_path.poses = []
+        for x, y in path_coordinates:
+            pose = PoseStamped()
+            pose.pose.position.x = x
+            pose.pose.position.y = y
+            pose.pose.position.z = 0.0
+            pose.pose.orientation.w = 1.0
+            self.msg_path.poses.append(pose)
+        self.pub_path.publish(self.msg_path)
+        
+            
 
 
 def main(args=None):

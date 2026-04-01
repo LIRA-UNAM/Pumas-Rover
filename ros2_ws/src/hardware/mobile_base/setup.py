@@ -33,6 +33,7 @@ setup(
             'odometry_listener = mobile_base.odometry_listener:main',
             'path_planner = mobile_base.path_planner:main',
             'objective_movement = mobile_base.objective_movement:main',
+            'goal_path = mobile_base.goal_path:main',
         ],
     },
 )
