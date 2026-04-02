@@ -1,3 +1,5 @@
+#Falta agregar la parte que cuando vea una roca se detenga la publicacion de puntos y se mueva a la roca 
+
 import rclpy
 from rclpy.node import Node
 from tf2_ros import Buffer, TransformListener
