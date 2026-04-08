@@ -65,7 +65,7 @@ class yahboomcar_driver(Node):
 		self.magPublisher = self.create_publisher(MagneticField,"/imu/mag",100)
 
 		#create timer
-		self.timer = self.create_timer(0.1, self.pub_data)
+		self.timer = self.create_timer(0.05, self.pub_data)
 
 		#create and init variable
 		self.edition = Float32()

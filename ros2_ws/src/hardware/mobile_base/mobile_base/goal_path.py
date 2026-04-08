@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from tf2_ros import Buffer, TransformListener
 from geometry_msgs.msg import PointStamped, Twist, Point, PoseStamped, Pose
+from std_msgs.msg import Float32
 from nav_msgs.msg import Path
 from rclpy.duration import Duration
 import time
@@ -32,6 +33,12 @@ class PathPlanner(Node):
             'start',
             self.start_callback,
             10)
+        # self.subscription_yaw = self.create_subscription(
+        #     Float32,
+        #     'yaw',
+        #     self.yaw_callback,
+        #     10
+        # )
         self.pub_path = self.create_publisher(Path, '/path_planning/path', 10)
         
             
@@ -66,6 +73,11 @@ class PathPlanner(Node):
         self.path_map = []
 
         self.msg_path = Path()
+
+        self.w1 = 2.0
+        self.w2 = 0.07
+        self.steps = 10000
+
         self.get_logger().info(f"Path Planner node initialized")
         self.timer = self.create_timer(0.05, self.control_loop)
         
@@ -91,7 +103,9 @@ class PathPlanner(Node):
         self.start = True
         self.get_logger().info(f"Inicio recibido: x={self.robot_x}, y={self.robot_y}")
         
-
+    # def yaw_callback(self,msg):
+    #     self.yaw_angle = msg.data
+    #     self.get_logger().info(f"Angulo recibido: yaw={self.yaw_angle}")
 
 
     def a_star(self, start_r, start_c, goal_r, goal_c, use_diagonals):
@@ -161,14 +175,18 @@ class PathPlanner(Node):
     def control_loop(self):
       
             if self.goal and self.start:
-                self.get_logger().info(f"Iniciando planificación de ruta")
+                #self.get_logger().info(f"Iniciando planificación de ruta")
                 goal_x, goal_y = self.get_absolute_points()
-                self.path = self.a_star(0, 0, int(goal_y/self.resolution), int(goal_x/self.resolution),use_diagonals=True)
-                final_path = self.get_path_coordinates()
-                self.get_logger().info(f"Ruta calculada: {self.path}, coordenadas: {final_path}")
+                self.path = self.a_star(0, 0, int(goal_y/self.resolution), int(goal_x/self.resolution),use_diagonals=False)
+                coordinates_path = self.get_path_coordinates()
+                self.get_logger().info(f"Ruta calculada: {self.path}, Ruta normal: {coordinates_path}")
+                smooth_path = self.smooth_path (numpy.asarray([[positionx, positiony] for positionx,positiony in coordinates_path]),self.w1,self.w2,self.steps)
+                self.get_logger().info (f"Ruta suavizada:")
+                for x,y in smooth_path:
+                    self.get_logger().info(f"x:{x:.2f}, y:{y:.2f}")
                 self.goal = False
                 self.start = False
-                self.publish_path(final_path)
+                self.publish_path(smooth_path)
                 #self.pub_path.publish(self.msg_path)
                 
 
@@ -181,13 +199,34 @@ class PathPlanner(Node):
     
     def get_path_coordinates(self):
         path_coordinates = []
-        x_transform = self.target_x/abs(self.target_x)
-        y_transform = self.target_y/abs(self.target_y)
+        diference_x = self.target_x-self.robot_x
+        diference_y = self.target_y-self.robot_y
+        x_transform = 1
+        y_transform = 1
+        if diference_x != 0:
+            x_transform = (diference_x)/abs(diference_x)
+        if diference_y != 0:
+            y_transform = (diference_y)/abs(diference_y)
         for cell in self.path:
             x = cell[1] * self.resolution*x_transform + self.robot_x
             y = cell[0] * self.resolution*y_transform + self.robot_y
             path_coordinates.append((x, y))
         return path_coordinates
+    
+    def smooth_path(self, Q, w1, w2, max_steps):
+        P = numpy.copy(Q)
+        tol     = 0.00001                   
+        nabla   = numpy.full(Q.shape, float("inf"))
+        epsilon = 0.1
+        steps=0
+        nabla[0], nabla[-1] = 0,0
+        while numpy.linalg.norm(nabla)> tol*len(P) and max_steps >0:
+            for i in range(1, len(Q)-1):
+                nabla[i]=w1*(2*P[i] - P[i-1] - P[i+1]) + w2*(P[i] - Q[i])
+            P = P - epsilon*nabla
+            max_steps -=1                                            
+        
+        return P
     
     def publish_path(self, path_coordinates):
         self.msg_path.header.frame_id = "map"

@@ -1,11 +1,13 @@
 import rclpy
 import time
 import math
+import numpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from tf2_ros import TransformBroadcaster
 from geometry_msgs.msg import TransformStamped
 from tf2_ros.buffer import Buffer #tf2 = transformation for odometry and base_link
+from std_msgs.msg import Float32
 #from Rosmaster_Lib import Rosmaster
 from mobile_base import roboclaw_3
 from dynamixel_sdk import *
@@ -58,6 +60,12 @@ class MobileBaseNode(Node):
             Twist,
             'cmd_vel',
             self.cmd_vel_callback,
+            10
+        )
+        self.subscription_yaw = self.create_subscription(
+            Float32,
+            'yaw',
+            self.yaw_callback,
             10
         )
 
@@ -114,9 +122,14 @@ class MobileBaseNode(Node):
         self.y = 0.0
         self.theta = 0.0
 
+        #Data for EKF
+        self.yaw_angle = 0.0
+        self.P = numpy.diag([0.1,0.1,0.2])
+
+
         #Variable to control dynamixels
-        self.goal_position = [2052,2048,2048,2048] #Initial position for each dynamixel 
-        self.prev_goal_position = [2052,2048,2048,2048] #Previous position for each dynamixel, used for odometry calculations
+        self.goal_position = [2172,2048,2048,2048] #Initial position for each dynamixel 
+        self.prev_goal_position = [2048,2048,2048,2048] #Previous position for each dynamixel, used for odometry calculations
         self.DXL_ID = [1,3,4,2] #ID for all 4 motors #1&3 = left wheels, 4&2 = right wheels
 
         #Preparation of dynamixels using the SDK Dynamixel
@@ -165,6 +178,9 @@ class MobileBaseNode(Node):
         self.notdata = 0
         if self.stop_driver == False:
             self.drive()
+
+    def yaw_callback(self,msg):
+        self.yaw_angle = msg.data
         
 
     def setup_dynamixel(self, dxl_id):
@@ -218,16 +234,21 @@ class MobileBaseNode(Node):
             else: 
                 param = [DXL_LOBYTE(int(round(self.prev_goal_position[c]))),DXL_HIBYTE(int(round(self.prev_goal_position[c])))]
                 dxl_addparam_result = self.groupSyncWrite.addParam(self.DXL_ID[c], param)
-            if dxl_addparam_result != True:
-                self.get_logger().error(f'Failed to addparam for ID {self.DXL_ID[c]}')
-                return
+            # if dxl_addparam_result != True:
+            #     self.get_logger().error(f'Failed to addparam for ID {self.DXL_ID[c]}')
+            #     return
 
         #Send and move dynamixel servos with the new save angles
-        dxl_comm_result = self.groupSyncWrite.txPacket()
-        if dxl_comm_result != COMM_SUCCESS:
-            self.get_logger().error(f'Failed to set wheel positions: {self.packet_handler.getTxRxResult(dxl_comm_result)}')
-            self.stop_driver = True
+        try:
+            dxl_comm_result = self.groupSyncWrite.txPacket()
+        except Exception as e:
+            self.get_logger().error(f"Error en Dynamixel: {e}")
             return
+        #dxl_comm_result = self.groupSyncWrite.txPacket()
+        # if dxl_comm_result != COMM_SUCCESS:
+        #     self.get_logger().error(f'Failed to set wheel positions: {self.packet_handler.getTxRxResult(dxl_comm_result)}')
+        #     self.stop_driver = True
+        #     return
         
         self.groupSyncWrite.clearParam()
 
@@ -278,7 +299,7 @@ class MobileBaseNode(Node):
         #Wheel speeds:
         v_lf = abs(radius_left_frontal * angular) * sign2
         v_lc = abs((radius_left_center-0.03) * angular) * sign2 * -sign4
-        v_lr = abs(radius_right_frontal * angular)* sign2
+        v_lr = abs(radius_left_frontal * angular)* sign2
         v_rf = abs(radius_right_frontal * angular)* sign2
         v_rc = abs((radius_right_center+0.03) * angular)* sign2 * sign3
         v_rr = abs(radius_right_frontal * angular)* sign2
@@ -287,7 +308,7 @@ class MobileBaseNode(Node):
 
     def radian_to_dynamixel (self,angles): #Angles in radian to angles in bits for each dynamixel
 
-        angles[0] = 2052 - (4096/(2*math.pi))* angles[0]
+        angles[0] = 2172 - (4096/(2*math.pi))* angles[0]
         angles[2] = 2048 - (4096/(2*math.pi))* angles[2]
         angles[3] = 2048 - (4096/(2*math.pi))* angles[3]
         angles[5] = 2048 - (4096/(2*math.pi))* angles[5]
@@ -318,8 +339,8 @@ class MobileBaseNode(Node):
         #Encoders 1 = left, Encoders 2 = right
         enc1_front = self.roboclaw_front.ReadEncM1(self.ADDRESS) [1]
         enc2_front = self.roboclaw_front.ReadEncM2(self.ADDRESS) [1]
-        enc1_center = self.roboclaw_front.ReadEncM1(self.ADDRESS) [1]
-        enc2_center = self.roboclaw_front.ReadEncM2(self.ADDRESS) [1]
+        enc1_center = self.roboclaw_center.ReadEncM1(self.ADDRESS) [1]
+        enc2_center = self.roboclaw_center.ReadEncM2(self.ADDRESS) [1]
         enc1_rear = self.roboclaw_rear.ReadEncM1(self.ADDRESS) [1]
         enc2_rear = self.roboclaw_rear.ReadEncM2(self.ADDRESS) [1]
 
@@ -334,14 +355,23 @@ class MobileBaseNode(Node):
 
         #Use angle wheel, ppr and advance to calculate position advance in meters
         dx_front_left = (enc1_front - self.prev_enc1_front) * math.cos(self.servo_odometry_angles[0])*self.meters_per_tick
+        dx_center_left = (enc1_center - self.prev_enc1_center) * self.meters_per_tick 
         dx_rear_left = (enc1_rear - self.prev_enc1_rear) * math.cos(self.servo_odometry_angles[1])*self.meters_per_tick
+        
         dx_front_right = (enc2_front - self.prev_enc2_front) * math.cos(self.servo_odometry_angles[2])*self.meters_per_tick
+        dx_center_right = (enc2_center - self.prev_enc2_center) * self.meters_per_tick 
         dx_rear_right = (enc2_rear - self.prev_enc2_rear) * math.cos(self.servo_odometry_angles[3])*self.meters_per_tick
 
-        #Average value of right and left for imitate a differential robot
+        #Average value of right and left to imitate a differential robot
+
+        # dx_right = dx_center_right
+        # dx_left = dx_center_left
+
         dx_right = (dx_front_right + dx_rear_right) / 2.0
         dx_left = (dx_front_left + dx_rear_left) / 2.0
-        #dx_left = (dx_rear_left)
+
+
+        
         
         #Update old encoder value for the next iteration
         self.prev_enc1_front = enc1_front
@@ -355,12 +385,23 @@ class MobileBaseNode(Node):
         d_theta = (dx_right - dx_left) / self.width 
         d_s = (dx_right + dx_left) / 2.0
 
-        #Split position in 2 axes and update total final odometry position
+        #Use of midpoint approximation to calculate the new position of the robot, with the angle change and the advance in this iteration
+
+        theta_mid = self.theta + d_theta / 2.0
+
+        self.x += d_s * math.cos(theta_mid)
+        self.y += d_s * math.sin(theta_mid)
         self.theta += d_theta
-        self.x += d_s * math.cos(self.theta)
-        self.y += d_s * math.sin(self.theta)
+
+        #Split position in 2 axes and update total final odometry position
+        # self.theta += d_theta
+        # self.x += d_s * math.cos(self.theta)
+        # self.y += d_s * math.sin(self.theta)
 
         #Publish odometry
+
+        #self.EKF(d_s, d_theta)
+
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = "odom"
@@ -379,6 +420,57 @@ class MobileBaseNode(Node):
 
         self.get_logger().info(
              f"x={self.x:.4f} y={self.y:.4f} theta={self.theta:.4f}")
+        
+    def EKF(self,d_s, d_theta):
+        
+        x = numpy.array([self.x, self.y, self.theta])
+
+        
+        P = self.P
+
+        
+        Q = numpy.diag([0.01, 0.01, 0.02])
+        R = numpy.array([[0.05]])
+
+        
+        theta = x[2]
+        theta_mid = theta + d_theta / 2.0
+        #Prediction
+        x_pred = numpy.array([
+            x[0] + d_s * numpy.cos(theta_mid),
+            x[1] + d_s * numpy.sin(theta_mid),
+            x[2] + d_theta
+        ])
+        
+
+        F = numpy.array([
+            [1, 0, -d_s * numpy.sin(theta_mid)],
+            [0, 1,  d_s * numpy.cos(theta_mid)],
+            [0, 0, 1]
+        ])
+
+        P_pred = F @ P @ F.T + Q
+
+    
+        z = self.yaw_angle
+        H = numpy.array([[0, 0, 1]])
+
+        y = z - x_pred[2]
+
+        
+        y = numpy.arctan2(numpy.sin(y), numpy.cos(y))
+
+        S = H @ P_pred @ H.T + R
+        K = P_pred @ H.T @ numpy.linalg.inv(S)
+
+        #Final correction
+        y = numpy.array([y])
+        x = x_pred + (K @ y).flatten()
+        P = (numpy.eye(3) - K @ H) @ P_pred
+
+        
+        self.x, self.y, self.theta = x
+        self.P = P
 
     def __del__(self):
         

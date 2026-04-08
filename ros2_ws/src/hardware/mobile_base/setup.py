@@ -34,6 +34,8 @@ setup(
             'path_planner = mobile_base.path_planner:main',
             'objective_movement = mobile_base.objective_movement:main',
             'goal_path = mobile_base.goal_path:main',
+            'path_follower = mobile_base.path_follower:main',
+            'rock_follower = mobile_base.rock_follower:main',
         ],
     },
 )

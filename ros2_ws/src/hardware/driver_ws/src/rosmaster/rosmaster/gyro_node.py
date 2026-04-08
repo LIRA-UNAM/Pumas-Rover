@@ -3,6 +3,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu, MagneticField
+from std_msgs.msg import Float32
 import math
 
 
@@ -14,6 +15,7 @@ class AttitudeMinimal(Node):
         # Subscripciones
         self.create_subscription(Imu, '/imu/data_raw', self.imu_cb, 10)
         self.create_subscription(MagneticField, '/imu/mag', self.mag_cb, 10)
+        self.yaw_pub = self.create_publisher (Float32, 'yaw',10)
 
         # Estado
         self.roll = 0.0
@@ -72,13 +74,16 @@ class AttitudeMinimal(Node):
         yaw = math.atan2(math.sin(yaw), math.cos(yaw))
 
         self.yaw = self.alpha_yaw * yaw + (1 - self.alpha_yaw) * self.yaw
+        msg_yaw = Float32()
+        msg_yaw.data = self.yaw
+        self.yaw_pub.publish(msg_yaw)
 
     # ---------------- PRINT ----------------
     def print_angles(self):
         self.get_logger().info(
             f'Roll:{math.degrees(self.roll):+6.1f}°  '
             f'Pitch:{math.degrees(self.pitch):+6.1f}°  '
-            f'Yaw:{math.degrees(self.yaw):+6.1f}°'
+            f'Yaw degrees:{math.degrees(self.yaw):+6.1f}°'
         )
 
 
