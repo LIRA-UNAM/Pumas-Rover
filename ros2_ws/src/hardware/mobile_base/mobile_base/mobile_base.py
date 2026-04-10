@@ -25,7 +25,7 @@ DEVICE_NAME = '/dev/ttyUSB0'
 TORQUE_ENABLE = 1  
 TORQUE_DISABLE = 0 
 NUM_SERVOS = 4
-ANGLE_RES = 12 #aprox 4096/360
+ANGLE_RES = 6 #aprox 4096/360 = 12
 
 class MobileBaseNode(Node): 
     def __init__(self):
@@ -60,12 +60,6 @@ class MobileBaseNode(Node):
             Twist,
             'cmd_vel',
             self.cmd_vel_callback,
-            10
-        )
-        self.subscription_yaw = self.create_subscription(
-            Float32,
-            'yaw',
-            self.yaw_callback,
             10
         )
 
@@ -110,8 +104,8 @@ class MobileBaseNode(Node):
         #Physic parameters to calculate odometry and speeds
         self.diameter = 0.107
         self.radius = self.diameter / 2.0
-        self.width = 0.32 #Rover measure of left wheels to right wheels
-        self.height = 0.28 #Rover measure of center wheels to front wheels
+        self.width = 0.37 #Rover measure of left wheels to right wheels
+        self.height = 0.29 #Rover measure of center wheels to front wheels
         self.ppr = 4400
        
         self.meters_per_tick = (math.pi * self.diameter) / self.ppr #For encoders
@@ -121,10 +115,6 @@ class MobileBaseNode(Node):
         self.x = 0.0
         self.y = 0.0
         self.theta = 0.0
-
-        #Data for EKF
-        self.yaw_angle = 0.0
-        self.P = numpy.diag([0.1,0.1,0.2])
 
 
         #Variable to control dynamixels
@@ -145,6 +135,7 @@ class MobileBaseNode(Node):
             self.get_logger().error('Failed to set the baudrate!')
             return
         self.get_logger().info('Succeeded to set the baudrate.')
+
         #Use of GroupSyncWrite for controlling 4 dynamixels using a single package
         self.groupSyncWrite = GroupSyncWrite(self.port_handler,self.packet_handler,ADDR_GOAL_POSITION,LEN_GOAL_POSITION)
         
@@ -179,12 +170,7 @@ class MobileBaseNode(Node):
         if self.stop_driver == False:
             self.drive()
 
-    def yaw_callback(self,msg):
-        self.yaw_angle = msg.data
-        
-
     def setup_dynamixel(self, dxl_id):
-
         
         for c in range(NUM_SERVOS):
             self.packet_handler.write1ByteTxRx(self.port_handler, dxl_id[c], ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
@@ -199,12 +185,17 @@ class MobileBaseNode(Node):
                 self.get_logger().error(f'Failed to addparam for ID {self.DXL_ID[c]}')
                 return
 
-        dxl_comm_result = self.groupSyncWrite.txPacket()
-        if dxl_comm_result != COMM_SUCCESS:
-            self.get_logger().error(f'Failed to set initial position: {self.packet_handler.getTxRxResult(dxl_comm_result)}')
+        try:
+            dxl_comm_result = self.groupSyncWrite.txPacket()
+        except Exception as e:
+            self.get_logger().error(f"Error en Dynamixel: {e}")
             return
-        else:
-            self.get_logger().info('Succeeded to set initial position.')
+        # dxl_comm_result = self.groupSyncWrite.txPacket()
+        # if dxl_comm_result != COMM_SUCCESS:
+        #     self.get_logger().error(f'Failed to set initial position: {self.packet_handler.getTxRxResult(dxl_comm_result)}')
+        #     return
+        # else:
+        #     self.get_logger().info('Succeeded to set initial position.')
         self.groupSyncWrite.clearParam()
 
     def drive(self):
@@ -231,9 +222,11 @@ class MobileBaseNode(Node):
             if (self.goal_position[c] - self.prev_goal_position[c]) > ANGLE_RES or (self.goal_position[c] - self.prev_goal_position[c]) < -ANGLE_RES: #Only update if the angle change is bigger than a threshold, to avoid unnecessary updates
                 param = [DXL_LOBYTE(int(round(self.goal_position[c]))),DXL_HIBYTE(int(round(self.goal_position[c])))]
                 dxl_addparam_result = self.groupSyncWrite.addParam(self.DXL_ID[c], param)
+                self.prev_goal_position[c] = self.goal_position[c]
             else: 
                 param = [DXL_LOBYTE(int(round(self.prev_goal_position[c]))),DXL_HIBYTE(int(round(self.prev_goal_position[c])))]
                 dxl_addparam_result = self.groupSyncWrite.addParam(self.DXL_ID[c], param)
+
             # if dxl_addparam_result != True:
             #     self.get_logger().error(f'Failed to addparam for ID {self.DXL_ID[c]}')
             #     return
@@ -325,6 +318,10 @@ class MobileBaseNode(Node):
     def stop(self):
         self.roboclaw_front.ForwardM1(self.ADDRESS, 0)
         self.roboclaw_front.ForwardM2(self.ADDRESS, 0)
+        self.roboclaw_center.ForwardM1(self.ADDRESS, 0)
+        self.roboclaw_center.ForwardM2(self.ADDRESS, 0)
+        self.roboclaw_rear.ForwardM1(self.ADDRESS, 0)
+        self.roboclaw_rear.ForwardM2(self.ADDRESS, 0)
 
     def update_odometry(self):
         if not self.data:
@@ -370,7 +367,7 @@ class MobileBaseNode(Node):
         dx_right = (dx_front_right + dx_rear_right) / 2.0
         dx_left = (dx_front_left + dx_rear_left) / 2.0
 
-
+        #Default 16 milisegundos del delay del puerto,
         
         
         #Update old encoder value for the next iteration
@@ -381,26 +378,25 @@ class MobileBaseNode(Node):
         self.prev_enc1_rear = enc1_rear
         self.prev_enc2_rear = enc2_rear
 
-        #Calculate final advance and angle postion in this iteration
-        d_theta = (dx_right - dx_left) / self.width 
+        #Calculate final advance and angle position in this iteration
+        d_theta = (dx_right - dx_left) / self.width
         d_s = (dx_right + dx_left) / 2.0
 
+
+
         #Use of midpoint approximation to calculate the new position of the robot, with the angle change and the advance in this iteration
+        #theta_mid = self.theta + d_theta / 2.0
+        # self.x += d_s * math.cos(theta_mid)
+        # self.y += d_s * math.sin(theta_mid)
+        # self.theta += d_theta
 
-        theta_mid = self.theta + d_theta / 2.0
-
-        self.x += d_s * math.cos(theta_mid)
-        self.y += d_s * math.sin(theta_mid)
-        self.theta += d_theta
 
         #Split position in 2 axes and update total final odometry position
-        # self.theta += d_theta
-        # self.x += d_s * math.cos(self.theta)
-        # self.y += d_s * math.sin(self.theta)
+        self.theta += d_theta
+        self.x += d_s * math.cos(self.theta)
+        self.y += d_s * math.sin(self.theta)
 
         #Publish odometry
-
-        #self.EKF(d_s, d_theta)
 
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
@@ -421,56 +417,6 @@ class MobileBaseNode(Node):
         self.get_logger().info(
              f"x={self.x:.4f} y={self.y:.4f} theta={self.theta:.4f}")
         
-    def EKF(self,d_s, d_theta):
-        
-        x = numpy.array([self.x, self.y, self.theta])
-
-        
-        P = self.P
-
-        
-        Q = numpy.diag([0.01, 0.01, 0.02])
-        R = numpy.array([[0.05]])
-
-        
-        theta = x[2]
-        theta_mid = theta + d_theta / 2.0
-        #Prediction
-        x_pred = numpy.array([
-            x[0] + d_s * numpy.cos(theta_mid),
-            x[1] + d_s * numpy.sin(theta_mid),
-            x[2] + d_theta
-        ])
-        
-
-        F = numpy.array([
-            [1, 0, -d_s * numpy.sin(theta_mid)],
-            [0, 1,  d_s * numpy.cos(theta_mid)],
-            [0, 0, 1]
-        ])
-
-        P_pred = F @ P @ F.T + Q
-
-    
-        z = self.yaw_angle
-        H = numpy.array([[0, 0, 1]])
-
-        y = z - x_pred[2]
-
-        
-        y = numpy.arctan2(numpy.sin(y), numpy.cos(y))
-
-        S = H @ P_pred @ H.T + R
-        K = P_pred @ H.T @ numpy.linalg.inv(S)
-
-        #Final correction
-        y = numpy.array([y])
-        x = x_pred + (K @ y).flatten()
-        P = (numpy.eye(3) - K @ H) @ P_pred
-
-        
-        self.x, self.y, self.theta = x
-        self.P = P
 
     def __del__(self):
         

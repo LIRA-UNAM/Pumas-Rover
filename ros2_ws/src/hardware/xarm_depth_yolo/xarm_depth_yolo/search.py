@@ -3,6 +3,7 @@ from rclpy.node import Node
 from xarm_msgs.srv import MoveJoint, SetInt16
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import PointStamped
+from std_msgs.msg import  Bool
 import time
 
 # ESTADOS
@@ -20,6 +21,12 @@ class SearchNode(Node):
         
         self.joint_sub = self.create_subscription(JointState, '/xarm/joint_states', self.initial_pos_callback, 10)
         self.confirmed_sub = self.create_subscription(PointStamped, '/yolo/confirmed_object', self.detection_callback, 10)
+
+        self.subscription_start = self.create_subscription(Bool, '/arm_searcher', self.start_callback, 10)
+        self.publisher_stop = self.create_publisher(Bool, '/arm_stop',10)
+
+        self.sm_start = False
+        self.loops = 0
 
         self.state = SM_MOVING
         self.idx = 0
@@ -56,6 +63,11 @@ class SearchNode(Node):
             self.get_logger().warn('!!! ROCA DETECTADA !!! Deteniendo...')
             self.state = SM_WAIT
             self.stop_arm()
+            self.sm_start = False
+            self.loops = 0
+
+    def start_callback (self, msg):
+        self.sm_start = True
 
     def stop_arm(self):
         req = SetInt16.Request()
@@ -80,12 +92,16 @@ class SearchNode(Node):
         future.add_done_callback(self.move_done_callback)
 
     def fsm_loop(self):
-        if self.state == SM_WAIT or self.busy or not self.initial_check_done:
+        if self.state == SM_WAIT or self.busy or not self.initial_check_done or not self.sm_start:
             return
 
         if self.state == SM_MOVING:
             self.get_logger().info(f'-> CADERA (Rápida) al Punto {self.idx}')
             self.send_angles(self.puntos_base[self.idx], self.VEL_CADERA)
+            self.loops += 1
+            if self.loops > 3:
+                self.sm_start = False
+                self.publisher_stop.publish(Bool(data=True))
             self.state = SM_LOOK
 
         elif self.state == SM_LOOK:
