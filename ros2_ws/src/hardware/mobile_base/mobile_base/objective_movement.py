@@ -55,6 +55,7 @@ class PathPlanner(Node):
         self.last_msg_time = time.time()
         self.target_x = 0.0
         self.target_y = 0.0
+        self.target_theta = 0.0
         self.prev_target_x = 0.0
         self.prev_target_y = 0.0
         self.move = False
@@ -67,15 +68,22 @@ class PathPlanner(Node):
         self.robot_theta = 0.0
         self.linear_max = 0.5
         self.angular_max = 0.5
-        #Speed profile parameters
-        self.des_accel_distance = 0.4
+        #Linear speed profile parameters
+        self.des_accel_distance = 0.5
         self.acel = 0.05
         self.current_speed = 0.0
-        self.goal_tolerance = 0.05
+        self.goal_tolerance = 0.03
         self.target_tolerance = 0.15
-        self.Kp = 1.2  #Max 1.2 for 0.5 m/s
+        self.Kp = 0.9  #Max 1.2 for 0.5 m/s
         self.alpha_vl = 0.8
-        self.beta_w = 0.2
+
+
+        self.des_accel_angle = 0.2
+        self.angle_acel = 0.1
+        self.current_angular_speed = 0.0
+        self.angle_goal_tolerance = 0.03
+        self.Kpw = 2  #Max 1.2 for 0.5 m/s
+        self.beta_w = 0.8
 
 
         
@@ -100,6 +108,7 @@ class PathPlanner(Node):
 
     def distance_callback(self, msg):
         
+        self.get_logger().info("Distancia recibida")
         self.distance_movement = msg.data
         self.target_x = self.robot_x + self.distance_movement * math.cos(self.robot_theta)
         self.target_y = self.robot_y + self.distance_movement * math.sin(self.robot_theta)
@@ -111,8 +120,9 @@ class PathPlanner(Node):
         
 
     def angle_callback(self, msg):
+        self.get_logger().info("Ángulo recibido")
         
-        self.distance_movement = msg.data
+        self.target_theta = msg.data + self.robot_theta
         self.state = SM_ROTATING
         self.last_msg_time = time.time()
 
@@ -168,13 +178,14 @@ class PathPlanner(Node):
             msg_finish = Bool()
             
             # MÁQUINA DE ESTADOS
-            if (self.target_x == self.prev_target_x and self.target_y == self.prev_target_y) or self.prev_theta == self.robot_theta or time.time() - self.last_msg_time > 10.0:
+            if ((self.target_x == self.prev_target_x and self.target_y == self.prev_target_y) and self.prev_theta == self.target_theta) or time.time() - self.last_msg_time > 10.0:
                 self.state = SM_WAITING
+                
                 #self.get_logger().info('Esperando nuevo objetivo...')
             elif self.move == True:
                 
                 if self.state == SM_APPROACHING:
-
+                    
                     distance_to_goal = math.sqrt((self.target_x - self.robot_x) ** 2 + (self.target_y - self.robot_y) ** 2)
                     if distance_to_goal < self.des_accel_distance:
                         if distance_to_goal < self.goal_tolerance:
@@ -195,11 +206,28 @@ class PathPlanner(Node):
                     self.publisher_vel.publish(msg)
 
                 elif self.state == SM_ROTATING:
-                    error_angle = math.atan2(self.target_y - self.robot_y, self.target_x - self.robot_x) - self.robot_theta
-                    error_angle = (error_angle + math.pi)%(2*math.pi) - math.pi
-                    if abs(error_angle) > self.goal_tolerance:
+                    
+                    error_angle = self.target_theta - self.robot_theta
+                   
+
+                    if abs(error_angle) < self.des_accel_angle:
+                        if abs(error_angle) < self.angle_goal_tolerance:
+                            self.current_angular_speed = 0.0
+                            self.state = SM_ARRIVED
+                        else:
+                            self.current_angular_speed = self.Kpw * error_angle
+                    
+                    else:
+                        if self.current_angular_speed < self.angular_max:
+                            self.current_angular_speed = self.current_angular_speed + self.angle_acel
+                        else:
+                            self.current_angular_speed = self.angular_max
+
+                    if abs(error_angle) > self.angle_goal_tolerance:
                         msg.linear.x = 0.0
                         msg.angular.z = self.angular_max*(2/(1 + math.exp(-error_angle/self.beta_w)) - 1)
+                        self.publisher_vel.publish(msg)
+                        self.get_logger().info(f"Rotando... error: {error_angle:.2f}")
                     else:
                         self.state = SM_ARRIVED
                 
@@ -231,7 +259,7 @@ class PathPlanner(Node):
                 
                 self.prev_target_x = self.target_x
                 self.prev_target_y = self.target_y
-                self.prev_theta = self.robot_theta
+                self.prev_theta = self.target_theta
                 #self.get_logger().info(f"Mapa de la ruta: {self.map_data}")
         
             #self.get_logger().info('Esperando nuevo objetivo...')

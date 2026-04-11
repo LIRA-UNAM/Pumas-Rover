@@ -245,6 +245,7 @@ class MobileBaseNode(Node):
         
         self.groupSyncWrite.clearParam()
 
+        time.sleep(0.01)
 
         #Printing speeds using roboclaws
 
