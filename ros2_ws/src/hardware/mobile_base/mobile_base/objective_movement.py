@@ -48,7 +48,7 @@ class PathPlanner(Node):
             
         
         self.publisher_vel = self.create_publisher(Twist, '/cmd_vel', 10)
-        self.publisher_finish = self.create_publisher(Bool, '/movement_finished',10)
+        #self.publisher_finish = self.create_publisher(Bool, '/movement_finished',10)
         
         
         self.state = SM_WAITING
@@ -247,7 +247,7 @@ class PathPlanner(Node):
                 msg.linear.x = 0.0
                 msg.angular.z = 0.0
                 msg_finish.data = True
-                self.publisher_finish.publish(msg_finish)
+                #self.publisher_finish.publish(msg_finish)
                 self.publisher_vel.publish(msg)
                 self.move = False
                 #self.get_logger().info('FIN', throttle_duration_sec=2.0)

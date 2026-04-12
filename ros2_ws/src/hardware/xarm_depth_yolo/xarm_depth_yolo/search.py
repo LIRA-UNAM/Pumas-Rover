@@ -22,6 +22,8 @@ class SearchNode(Node):
         self.joint_sub = self.create_subscription(JointState, '/xarm/joint_states', self.initial_pos_callback, 10)
         self.confirmed_sub = self.create_subscription(PointStamped, '/yolo/confirmed_object', self.detection_callback, 10)
 
+        #ros2 topic pub --once /arm_searcher std_msgs/msg/Bool "{data: true}"
+
         self.subscription_start = self.create_subscription(Bool, '/arm_searcher', self.start_callback, 10)
         self.publisher_stop = self.create_publisher(Bool, '/arm_stop',10)
 
@@ -93,6 +95,7 @@ class SearchNode(Node):
 
     def fsm_loop(self):
         if self.state == SM_WAIT or self.busy or not self.initial_check_done or not self.sm_start:
+            self.get_logger().info(f'Wait {self.idx}')
             return
 
         if self.state == SM_MOVING:

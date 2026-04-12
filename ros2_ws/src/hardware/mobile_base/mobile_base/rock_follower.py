@@ -70,6 +70,7 @@ class PathPlanner(Node):
         if (now - self.last_msg_time) > 1.0:
                 self.state = SM_WAITING
                 self.number_point = 0
+                self.move = False
                 #self.get_logger().info('Esperando nuevo objetivo...')
         elif self.move == True:
                 #Speed profile

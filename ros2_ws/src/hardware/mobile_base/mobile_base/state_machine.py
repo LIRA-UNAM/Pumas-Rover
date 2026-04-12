@@ -28,6 +28,10 @@ class PathPlanner(Node):
         self.confirmed_sub = self.create_subscription(PointStamped, '/yolo/confirmed_object', self.detection_callback, 10)
         self.arm_stop = self.create_subscription(Bool, '/arm_stop', self.arm_stop_callback, 10)
 
+        #ros2 topic pub --once /sm_start std_msgs/msg/Bool "{data: true}"
+
+        self.sm_start = self.create_subscription(Bool, '/sm_start', self.sm_start_callback, 10)
+
 
 
         self.publisher_distance = self.create_publisher(Float32, '/distance_movement', 10)
@@ -47,6 +51,11 @@ class PathPlanner(Node):
         self.movement_finished = False
 
         self.timer = self.create_timer(0.05, self.machine_loop)
+
+    def sm_start_callback(self,msg):
+        if msg.data == True:
+            self.state = SM_GO_FOWARD
+            self.get_logger().info("State Machine Started")
         
 
     def cmd_vel_callback(self, msg):
