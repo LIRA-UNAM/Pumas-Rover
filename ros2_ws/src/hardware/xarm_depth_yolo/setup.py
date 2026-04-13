@@ -27,7 +27,8 @@ setup(
             'transform = xarm_depth_yolo.transform:main',
             'follower = xarm_depth_yolo.follower:main',
             'print_position = xarm_depth_yolo.print_position:main',
-            'search = xarm_depth_yolo.search:main'
+            'search = xarm_depth_yolo.search:main',
+            'gripper = xarm_depth_yolo.gripper:main',
         ],
     },
 )
