@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PointStamped, Twist
+from std_msgs.msg import Bool
 import time
 import math
 
@@ -19,9 +20,16 @@ class PathPlanner(Node):
             '/yolo/object_point_camera',
             self.target_callback,
             10)
+        
+        self.subscription_move = self.create_subscription(
+            Bool,
+            '/follow_rock',
+            self.move_callback,
+            10)
             
         
         self.publisher_vel = self.create_publisher(Twist, '/cmd_vel', 10)
+        
         
         
         self.state = SM_WAITING
@@ -42,24 +50,27 @@ class PathPlanner(Node):
         
         
         self.timer = self.create_timer(0.05, self.control_loop)
-        self.get_logger().info('Path Planner para Rover Lunar iniciado.')
+        
 
     def target_callback(self, msg):
         
         self.target_x = msg.point.x
         self.target_z = msg.point.z
         self.last_msg_time = time.time()
+
+
+    def move_callback(self, msg):
         self.move = True
+          
 
     def control_loop(self):
         now = time.time()
         msg = Twist()
 
-        stop_distance = self.target_z + 0.8
-
         if (now - self.last_msg_time) > 1.0:
                 self.state = SM_WAITING
                 self.number_point = 0
+                self.move = False
                 #self.get_logger().info('Esperando nuevo objetivo...')
         elif self.move == True:
                 #Speed profile
@@ -78,10 +89,13 @@ class PathPlanner(Node):
                     else:
                          self.current_speed = self.linear_max
 
+        else: 
+              self.state = SM_ARRIVED
+
         if self.state == SM_WAITING:
                 msg.linear.x = 0.0
                 msg.angular.z = 0.0
-                self.publisher_vel.publish(msg)
+                #self.publisher_vel.publish(msg)
             
         elif self.state == SM_APPROACHING:
                 
@@ -101,40 +115,6 @@ class PathPlanner(Node):
                 self.stop_robot()
                 #self.get_logger().info(f"Ruta completa: {self.path_traveled}")
                 
-                
-               
-                         
-                         
-                    
-                    
-
-        # # 1. VERIFICACIÓN DE TIMEOUT 
-        # if (now - self.last_msg_time) > 1.0:
-        #     self.state = SM_WAITING
-        #     self.stop_robot()
-        #     return
-
-        # # 2. MÁQUINA DE ESTADOS
-        # if self.target_z > 0.35: 
-        #     self.state = SM_APPROACHING
-        # elif self.target_z <= 0.30 and self.target_z > 0:
-        #     self.state = SM_ARRIVED
-
-        # # 3. ACCIONES POR ESTADO
-        # if self.state == SM_APPROACHING:
-        #     msg.linear.x = min(0.2, (self.target_z - 0.3) * 0.5)
-            
-            
-        #     # msg.angular.z = -self.target_x * 0.8 
-
-        #     msg.angular.z = 0.7*((2/(1+math.exp(-self.target_x/0.5)))-1)
-            
-        #     self.get_logger().info(f'Acercándose... Z: {self.target_z:.2f}m', throttle_duration_sec=1.0)
-        #     self.publisher.publish(msg)
-
-        # elif self.state == SM_ARRIVED:
-        #     self.get_logger().info('FIN', throttle_duration_sec=2.0)
-        #     self.stop_robot()
 
     def stop_robot(self):
         self.publisher_vel.publish(Twist())

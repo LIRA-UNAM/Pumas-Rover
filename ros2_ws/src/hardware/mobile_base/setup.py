@@ -36,6 +36,9 @@ setup(
             'goal_path = mobile_base.goal_path:main',
             'path_follower = mobile_base.path_follower:main',
             'rock_follower = mobile_base.rock_follower:main',
+            'state_machine = mobile_base.state_machine:main',
         ],
     },
 )
+
+#Not used nodes: odometry_listener, path_planner, goal_path, path_follower
