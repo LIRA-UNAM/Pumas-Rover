@@ -1,11 +1,12 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import Image, CameraInfo
 from geometry_msgs.msg import PointStamped
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
-import os # --- IMPORTANTE: Añadido para leer tu ruta ---
+import os
 from ultralytics import YOLO
 from message_filters import Subscriber, ApproximateTimeSynchronizer
 
@@ -14,7 +15,7 @@ class NavVisionNode(Node):
         super().__init__('nav_vision')
         self.bridge = CvBridge()
         
-        # --- NUEVO: Carga de tu modelo entrenado 'fin.pt' ---
+        
         weights_path = os.path.expanduser('~/Pumas-Rover/ros2_ws/weights/fin.pt')
         self.model = YOLO(weights_path) 
         
@@ -22,69 +23,88 @@ class NavVisionNode(Node):
         
         self.fx = self.fy = self.cx = self.cy = None
         
+        
+        qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10
+        )
+        
+        # Suscripción a la info de cámara
         self.camera_info_sub = self.create_subscription(
             CameraInfo, 
             '/camera/camera/color/camera_info', 
             self.info_cb, 
-            10
+            qos_profile
         )
 
-        self.rgb_sub = Subscriber(self, Image, '/camera/camera/color/image_raw')
-        self.depth_sub = Subscriber(self, Image, '/camera/camera/aligned_depth_to_color/image_raw')
+        # Suscriptores sincronizados con el perfil correcto
+        self.rgb_sub = Subscriber(self, Image, '/camera/camera/color/image_raw', qos_profile=qos_profile)
+        self.depth_sub = Subscriber(self, Image, '/camera/camera/aligned_depth_to_color/image_raw', qos_profile=qos_profile)
         
+       
         self.sync = ApproximateTimeSynchronizer(
             [self.rgb_sub, self.depth_sub], 
-            queue_size=30, 
-            slop=0.5
+            queue_size=10, 
+            slop=0.1
         )
         self.sync.registerCallback(self.callback)
         
-        self.get_logger().info('Cargando modelo FIN y publicando posición 3D (X, Y, Z)...')
+        self.get_logger().info('Nodo NavVision activo. Esperando flujo de cámara...')
 
     def info_cb(self, msg):
+        # Guardamos los parámetros intrínsecos de la cámara
         self.fx, self.fy, self.cx, self.cy = msg.k[0], msg.k[4], msg.k[2], msg.k[5]
-        self.get_logger().info(f'Calibración obtenida: fx={self.fx:.1f}, fy={self.fy:.1f}')
+        self.get_logger().info('¡Calibración recibida! Iniciando visor...')
         self.destroy_subscription(self.camera_info_sub)
 
     def callback(self, rgb_msg, depth_msg):
+        # Si no tenemos fx, aún no podemos calcular coordenadas 3D
         if self.fx is None:
             return
 
-        frame = self.bridge.imgmsg_to_cv2(rgb_msg, 'bgr8')
-        depth_frame = self.bridge.imgmsg_to_cv2(depth_msg, 'passthrough')
+        try:
+            frame = self.bridge.imgmsg_to_cv2(rgb_msg, 'bgr8')
+            depth_frame = self.bridge.imgmsg_to_cv2(depth_msg, 'passthrough')
+        except Exception as e:
+            self.get_logger().error(f'Error en CV Bridge: {e}')
+            return
 
-        # Ejecutando la inferencia con fin.pt
+        # Inferencia con YOLO
         results = self.model(frame, conf=0.5, verbose=False)
         
+        # Generamos el frame con los cuadros de detección (si los hay)
         annotated_frame = results[0].plot()
 
         for result in results:
             for box in result.boxes:
-                
+                # Coordenada central del objeto en pixeles (u, v)
                 x_c, y_c, _, _ = box.xywh[0].cpu().numpy()
                 u, v = int(x_c), int(y_c)
                 
-                z_raw = depth_frame[v, u]
-                if z_raw > 0:
-                    Z = float(z_raw) / 1000.0
-                    
-                    X = (u - self.cx) * Z / self.fx
-                    Y = (v - self.cy) * Z / self.fy
-                    
-                    dist_msg = PointStamped()
-                    dist_msg.header = rgb_msg.header 
-                    dist_msg.header.frame_id = rgb_msg.header.frame_id 
-                    dist_msg.point.x = X
-                    dist_msg.point.y = Y
-                    dist_msg.point.z = Z
-                    
-                    self.distance_pub.publish(dist_msg)
+                # Obtener profundidad en ese punto
+                if 0 <= v < depth_frame.shape[0] and 0 <= u < depth_frame.shape[1]:
+                    z_raw = depth_frame[v, u]
+                    if z_raw > 0:
+                        Z = float(z_raw) / 1000.0 # Convertir mm a metros
+                        
+                        # Fórmulas de proyección (X, Y)
+                        X = (u - self.cx) * Z / self.fx
+                        Y = (v - self.cy) * Z / self.fy
+                        
+                        # Publicar la posición 3D
+                        dist_msg = PointStamped()
+                        dist_msg.header = rgb_msg.header 
+                        dist_msg.point.x, dist_msg.point.y, dist_msg.point.z = X, Y, Z
+                        self.distance_pub.publish(dist_msg)
 
-                    x1, y1, _, _ = box.xyxy[0].cpu().numpy().astype(int)
-                    cv2.putText(annotated_frame, f"X:{X:.2f} Y:{Y:.2f} Z:{Z:.2f}m", (x1, y1 + 30), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                        # Dibujar datos en el frame
+                        x1, y1, _, _ = box.xyxy[0].cpu().numpy().astype(int)
+                        cv2.putText(annotated_frame, f"Z:{Z:.2f}m X:{X:.2f}m", (x1, y1 - 10), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-        cv2.imshow("Imagen - META", annotated_frame)
+        # ESTO ABRE LA VENTANA SIEMPRE QUE LLEGUE UN FRAME
+        cv2.imshow("Navegación - YOLO", annotated_frame)
         cv2.waitKey(1)
 
 def main(args=None):
