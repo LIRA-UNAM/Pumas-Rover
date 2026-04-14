@@ -97,7 +97,7 @@ class MobileBaseNode(Node):
         
         
         self.accel_max = 8000
-        self.max_pwm = 60
+        self.max_pwm = 127
         self.linear = 0.0
         self.angular = 0.0
 
@@ -158,7 +158,7 @@ class MobileBaseNode(Node):
         self.prev_enc2_rear = self.roboclaw_rear.ReadEncM2(self.ADDRESS) [1]
         
         #Calculate odometry every 0.1 seconds
-        self.timer = self.create_timer(0.05, self.update_odometry) #0.1 anteriormente
+        self.timer = self.create_timer(0.1, self.update_odometry) #0.1 anteriormente
 
         self.get_logger().info("Odometria con TF")
 
@@ -250,7 +250,11 @@ class MobileBaseNode(Node):
         #Printing speeds using roboclaws
 
         self.roboclaw_front.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[0])))
-        self.roboclaw_center.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[1]))) 
+        #self.roboclaw_center.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[1]))) 
+        if wheel_speeds[1] > 0: #Provisional until we solve encoder left center problem
+            self.roboclaw_center.ForwardM1(self.ADDRESS, int(round(wheel_speeds[1]*self.max_pwm*self.meters_per_tick)))
+        else:
+            self.roboclaw_center.BackwardM1(self.ADDRESS, int(round(abs(wheel_speeds[1])*self.max_pwm*self.meters_per_tick)))
         self.roboclaw_rear.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[2])))
         self.roboclaw_front.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[3])))
         self.roboclaw_center.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[4])))

@@ -38,18 +38,18 @@ class PathPlanner(Node):
         self.target_z = 0.0
 
         
-        self.linear_max = 0.5
+        self.linear_max = 0.6
         self.angular_max = 0.5
         #Speed profile parameters
-        self.des_accel_distance = 1.2
-        self.acel = 0.05
+        self.des_accel_distance = 1.0
+        self.acel = 0.15
         self.current_speed = 0.0
-        self.goal_tolerance = 0.8
-        self.Kp = 0.4  #Max 1.5 for 0.6 m/s
+        self.goal_tolerance = 0.3
+        self.Kp = 0.6  
         self.move = False
         
         
-        self.timer = self.create_timer(0.05, self.control_loop)
+        self.timer = self.create_timer(0.1, self.control_loop)
         
 
     def target_callback(self, msg):
@@ -77,17 +77,22 @@ class PathPlanner(Node):
                 self.state = SM_APPROACHING
                 
                 if self.target_z < self.des_accel_distance:
-                    if self.target_z <= self.goal_tolerance:
+                    self.get_logger().info("Entrando en zona de desaceleracion")
+                    if self.target_z < self.goal_tolerance:
+                        self.get_logger().info("Current speed 0.0")
                         self.current_speed = 0.0
                         self.state = SM_ARRIVED
                     else:
                         self.current_speed = self.Kp * self.target_z 
                 else:
+
                     if self.current_speed < self.linear_max:
+                        self.get_logger().info("Acelerando de a poco")
                         self.current_speed = self.current_speed + self.acel
                         
                     else:
                          self.current_speed = self.linear_max
+                         self.get_logger().info("Tope de vel")
 
         else: 
               self.state = SM_ARRIVED
@@ -99,7 +104,7 @@ class PathPlanner(Node):
             
         elif self.state == SM_APPROACHING:
                 
-                        msg.linear.x = self.current_speed * math.exp(-(self.target_z**2)/0.7) 
+                        msg.linear.x = self.current_speed * math.exp(-(self.target_x**2)/0.7) 
                         msg.angular.z = self.angular_max*((2/(1+math.exp(self.target_x/0.2)))-1) 
             
                         self.publisher_vel.publish(msg)

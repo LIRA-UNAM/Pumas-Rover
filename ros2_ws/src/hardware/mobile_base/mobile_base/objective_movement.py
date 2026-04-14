@@ -67,7 +67,7 @@ class PathPlanner(Node):
         self.robot_y = 0.0
         self.robot_theta = 0.0
         self.linear_max = 0.5
-        self.angular_max = 0.5
+        self.angular_max = 0.9
         #Linear speed profile parameters
         self.des_accel_distance = 0.5
         self.acel = 0.05
@@ -78,11 +78,11 @@ class PathPlanner(Node):
         self.alpha_vl = 0.8
 
 
-        self.des_accel_angle = 0.2
-        self.angle_acel = 0.1
+        self.des_accel_angle = 0.1
+        self.angle_acel = 0.2
         self.current_angular_speed = 0.0
-        self.angle_goal_tolerance = 0.03
-        self.Kpw = 2  #Max 1.2 for 0.5 m/s
+        self.angle_goal_tolerance = 0.02
+        self.Kpw = 9  #Max 1.2 for 0.5 m/s
         self.beta_w = 0.8
 
 
@@ -214,6 +214,7 @@ class PathPlanner(Node):
                         if abs(error_angle) < self.angle_goal_tolerance:
                             self.current_angular_speed = 0.0
                             self.state = SM_ARRIVED
+                            self.get_logger().info('Alto chihuahua')
                         else:
                             self.current_angular_speed = self.Kpw * error_angle
                     
@@ -223,13 +224,12 @@ class PathPlanner(Node):
                         else:
                             self.current_angular_speed = self.angular_max
 
-                    if abs(error_angle) > self.angle_goal_tolerance:
-                        msg.linear.x = 0.0
-                        msg.angular.z = self.angular_max*(2/(1 + math.exp(-error_angle/self.beta_w)) - 1)
-                        self.publisher_vel.publish(msg)
-                        self.get_logger().info(f"Rotando... error: {error_angle:.2f}")
-                    else:
-                        self.state = SM_ARRIVED
+                    
+                    msg.linear.x = 0.0
+                    msg.angular.z = self.angular_max*(2/(1 + math.exp(-error_angle/self.beta_w)) - 1)
+                    self.publisher_vel.publish(msg)
+                    #self.get_logger().info(f"Rotando... error: {error_angle:.2f}")
+                    
                 
             else:
                 self.state = SM_ARRIVED
@@ -253,6 +253,9 @@ class PathPlanner(Node):
                 #self.get_logger().info('FIN', throttle_duration_sec=2.0)
                 self.stop_robot()
                 #self.get_logger().info(f"Ruta completa: {self.path_traveled}")
+                msg.linear.x = 0.0
+                msg.angular.z = 0.0
+                self.publisher_vel.publish(msg)
                 self.get_logger().info(
                     f"Fin de la ruta x: {self.robot_x:.2f}, y: {self.robot_y:.2f}, theta: {self.robot_theta:.2f}"
                     )
@@ -269,7 +272,7 @@ class PathPlanner(Node):
         error_angle = math.atan2(goal_y - robot_y, goal_x - robot_x) - robot_angle
         error_angle = (error_angle + math.pi)%(2*math.pi) - math.pi
         v = v_max*math.exp(-error_angle*error_angle/alpha)
-        w = w_max*(2/(1 + math.exp(-error_angle/beta)) - 1)
+        w = 0.3*(2/(1 + math.exp(-error_angle/beta)) - 1)
                 
         return [v,w]
 
