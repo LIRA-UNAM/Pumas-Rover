@@ -35,9 +35,13 @@ class FollowerAutonomo(Node):
         self.step_idx = 0
         self.busy = False
         self.stable_count = 0
-        self.action_queue = [] # ¡NUEVO! Cola de acciones dinámica
+        self.action_queue = [] 
         
-        # Parámetros Calibrados Originales
+        # Banderas de Delay Físico (NUEVO)
+        self.waiting_for_delay = False
+        self.delay_end_time = 0.0
+        
+        # Parámetros Calibrados
         self.EPSILON = 50.0        
         self.Z_FLOOR = -219.2      
         self.Z_APPROACH = -169.2   
@@ -49,7 +53,7 @@ class FollowerAutonomo(Node):
         self.DEPOSIT_JOINTS = [-1.5752, -0.2315, -0.1048, -2.2752, -0.2931, 0.0008]
 
         self.timer = self.create_timer(0.1, self.main_loop)
-        self.get_logger().info('Follower "Lista de Tareas" Listo.')
+        self.get_logger().info('Follower "Tiempos Físicos" Listo.')
 
     def target_cb(self, msg):
         if self.state == "WAITING_FOR_STABILITY":
@@ -78,13 +82,23 @@ class FollowerAutonomo(Node):
         future.add_done_callback(self.service_done)
 
     def service_done(self, future):
-        time.sleep(0.4) # Respiro para el xArm
+        # El servicio respondió, pero el movimiento físico apenas empieza.
+        # Quitamos el busy rápido para que el loop entre al Delay físico.
+        time.sleep(0.1) 
         self.busy = False
         self.step_idx += 1
 
     def main_loop(self):
         if self.busy: return
 
+        # --- CONTROL DE TIEMPOS FÍSICOS (EL ESTABILIZADOR) ---
+        if self.waiting_for_delay:
+            if time.time() >= self.delay_end_time:
+                self.waiting_for_delay = False
+                self.step_idx += 1  # Pasamos a la siguiente orden real
+            return  # Congela la máquina de estados hasta que termine el delay
+
+        # --- FASES DEL SISTEMA ---
         if self.state == "SETTLING_PAUSE":
             if time.time() - self.start_time > 2.0:
                 self.get_logger().info('Abriendo ojos desde HOME. Esperando lecturas...')
@@ -97,7 +111,7 @@ class FollowerAutonomo(Node):
                 if self.stable_count >= 10:
                     self.get_logger().info('¡Roca estable! Armando lista de tareas...')
                     self.mission_target = self.live_target
-                    self.prepare_action_queue() # ¡Calcula la ruta exacta!
+                    self.prepare_action_queue() 
                     self.reset_arm_services()
                     self.decision_delay = time.time()
                     self.state = "DECISION_DELAY"
@@ -118,12 +132,11 @@ class FollowerAutonomo(Node):
             self.execute_action()
 
     def prepare_action_queue(self):
-        """Recrea EXACTAMENTE la matemática de tu código manual"""
         target_x = self.mission_target.x * 1000.0
         target_y = self.mission_target.y * 1000.0
         grip_r, grip_p, grip_yw = -3.1416, 0.0, -1.5708
         
-        self.action_queue = [] # Limpiamos la cola anterior
+        self.action_queue = [] 
         
         # --- FASE 1: DESCENSO VISUAL ---
         goal_b = [target_x, target_y, self.Z_APPROACH]
@@ -141,8 +154,10 @@ class FollowerAutonomo(Node):
             self.action_queue.append({
                 'type': 'cartesian',
                 'pose': [w_x, w_y, w_z, self.HOME_CARTESIAN[3], self.HOME_CARTESIAN[4], self.HOME_CARTESIAN[5]],
-                'speed': 50.0, 'acc': 500.0, 'label': f'Waypoint {i}/{num_pasos}'
+                'speed': 50.0, 'acc': 500.0, 'label': f'Orden Waypoint {i}/{num_pasos}'
             })
+            # Estabilizador tras mandar cada orden de bajada
+            self.action_queue.append({'type': 'delay', 'duration': 1.2, 'label': 'Físico: Viajando a Waypoint'})
 
         # --- FASE 2: AGARRE ---
         final_x = target_x + self.GRIPPER_OFFSET_X
@@ -151,49 +166,70 @@ class FollowerAutonomo(Node):
         self.action_queue.append({
             'type': 'cartesian',
             'pose': [final_x, final_y, self.Z_FLOOR, grip_r, grip_p, grip_yw],
-            'speed': 50.0, 'acc': 500.0, 'label': 'Punto C (Piso)'
+            'speed': 40.0, 'acc': 400.0, 'label': 'Orden Punto C (Piso)'
         })
-        self.action_queue.append({'type': 'service', 'client': self.grab_client, 'label': 'Cerrar Gripper'})
+        self.action_queue.append({'type': 'delay', 'duration': 2.0, 'label': 'Físico: Estabilizando en el piso'})
+        
+        self.action_queue.append({'type': 'service', 'client': self.grab_client, 'label': 'Orden Cerrar Gripper'})
+        self.action_queue.append({'type': 'delay', 'duration': 3.5, 'label': 'Físico: Cierre y presión de Gripper'})
 
         # --- FASE 3: RETORNO Y DEPÓSITO ---
         self.action_queue.append({
             'type': 'cartesian',
             'pose': [final_x, final_y, self.Z_APPROACH, grip_r, grip_p, grip_yw],
-            'speed': 50.0, 'acc': 500.0, 'label': 'Escape Vertical'
+            'speed': 50.0, 'acc': 500.0, 'label': 'Orden Escape Vertical'
         })
+        self.action_queue.append({'type': 'delay', 'duration': 2.0, 'label': 'Físico: Levantando la roca'})
+
         self.action_queue.append({
             'type': 'joint', 'angles': self.HOME_JOINTS, 
-            'speed': 0.35, 'acc': 2.0, 'label': 'Arco a Home'
+            'speed': 0.35, 'acc': 2.0, 'label': 'Orden Arco a Home'
         })
+        self.action_queue.append({'type': 'delay', 'duration': 4.0, 'label': 'Físico: Viaje largo a Home'})
+
         self.action_queue.append({
             'type': 'joint', 'angles': self.DEPOSIT_JOINTS, 
-            'speed': 0.35, 'acc': 2.0, 'label': 'Arco a Depósito'
+            'speed': 0.35, 'acc': 2.0, 'label': 'Orden Arco a Depósito'
         })
-        self.action_queue.append({'type': 'service', 'client': self.open_client, 'label': 'Abrir Gripper'})
+        self.action_queue.append({'type': 'delay', 'duration': 4.0, 'label': 'Físico: Viaje a Depósito'})
+
+        self.action_queue.append({'type': 'service', 'client': self.open_client, 'label': 'Orden Abrir Gripper'})
+        self.action_queue.append({'type': 'delay', 'duration': 2.0, 'label': 'Físico: Soltando roca'})
+
         self.action_queue.append({
             'type': 'joint', 'angles': self.HOME_JOINTS, 
-            'speed': 0.35, 'acc': 2.0, 'label': 'Regreso a Operación'
+            'speed': 0.35, 'acc': 2.0, 'label': 'Orden Regreso a Operación'
         })
+        self.action_queue.append({'type': 'delay', 'duration': 4.0, 'label': 'Físico: Posicionando en Home'})
 
     def execute_action(self):
-        """Ejecuta la cola de acciones dinámicamente"""
+        """Ejecuta la orden o el tiempo de espera"""
         if self.step_idx < len(self.action_queue):
             action = self.action_queue[self.step_idx]
-            self.get_logger().info(f"[{self.step_idx + 1}/{len(self.action_queue)}] Ejecutando: {action['label']}")
             
-            if action['type'] == 'cartesian':
-                req = MoveCartesian.Request()
-                req.pose, req.speed, req.acc = action['pose'], action['speed'], action['acc']
-                self.call_service(self.cartesian_client, req)
+            # SI ES UN ESTABILIZADOR (DELAY)
+            if action['type'] == 'delay':
+                self.get_logger().info(f"[{self.step_idx + 1}/{len(self.action_queue)}] {action['label']} ({action['duration']}s)")
+                self.waiting_for_delay = True
+                self.delay_end_time = time.time() + action['duration']
+                # Nota: NO sumamos el step_idx aquí, lo sumará el main_loop cuando acabe el tiempo
                 
-            elif action['type'] == 'joint':
-                req = MoveJoint.Request()
-                req.angles, req.speed, req.acc = action['angles'], action['speed'], action['acc']
-                self.call_service(self.joint_client, req)
-                
-            elif action['type'] == 'service':
-                req = Trigger.Request()
-                self.call_service(action['client'], req)
+            # SI ES UNA ORDEN FÍSICA
+            else:
+                self.get_logger().info(f"[{self.step_idx + 1}/{len(self.action_queue)}] {action['label']}")
+                if action['type'] == 'cartesian':
+                    req = MoveCartesian.Request()
+                    req.pose, req.speed, req.acc = action['pose'], action['speed'], action['acc']
+                    self.call_service(self.cartesian_client, req)
+                    
+                elif action['type'] == 'joint':
+                    req = MoveJoint.Request()
+                    req.angles, req.speed, req.acc = action['angles'], action['speed'], action['acc']
+                    self.call_service(self.joint_client, req)
+                    
+                elif action['type'] == 'service':
+                    req = Trigger.Request()
+                    self.call_service(action['client'], req)
         else:
             self.get_logger().info('¡Recolección completada! Regresando estafeta al Search.')
             self.resume_pub.publish(Bool(data=True))
