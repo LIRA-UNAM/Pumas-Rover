@@ -22,6 +22,7 @@ def generate_launch_description():
         package='mobile_base',
         executable='state_machine',
         
+        
     )
 
     objective_movement_node = Node(
@@ -73,7 +74,8 @@ def generate_launch_description():
         'depth_module.depth_profile': '640x480x15',
         'initial_reset': 'true',
         'enable_gyro': 'false',
-        'enable_accel': 'false'
+        'enable_accel': 'false',
+        'align_depth.enable': 'true'
     }.items()
 )
     
@@ -82,10 +84,7 @@ def generate_launch_description():
     package='xarm_depth_yolo',
     executable='search',
 )
-    delayed_search = TimerAction( 
-    period=8.0,  
-    actions=[search_node]
-)
+
     
     mobile_base_node = Node(
         name='mobile_base',
@@ -99,14 +98,18 @@ def generate_launch_description():
     return LaunchDescription([
         robot_ip_arg,
 
-        state_machine_node,
+        #state_machine_node,
         objective_movement_node,
         rock_follower_node,
         xarm_driver_launch,
         xarm_rviz_launch,
         realsense_launch,
-        delayed_search,
+        #search_node,
+        state_machine_node,
+        #delayed_sm,
         mobile_base_node,
+        
+
         
     
     ])

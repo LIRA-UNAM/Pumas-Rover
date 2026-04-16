@@ -4,6 +4,7 @@ from tf2_ros import Buffer, TransformListener
 from geometry_msgs.msg import PointStamped, Twist, Quaternion
 from std_msgs.msg import Float32, Bool
 from rclpy.duration import Duration
+from xarm_msgs.srv import SetInt16, SetInt16ById
 import time
 import math
 
@@ -42,6 +43,7 @@ class PathPlanner(Node):
 
         self.publisher_stop_movement = self.create_publisher (Bool, '/stop_movement', 10)
 
+    
         #Tunning movement parameters
         self.foward_advance = 1.0 #meters
         self.angle_rotation = math.pi/2 #radians
@@ -55,6 +57,7 @@ class PathPlanner(Node):
     def sm_start_callback(self,msg):
         if msg.data == True:
             self.state = SM_GO_FOWARD
+            self.movement_finished = True
             self.get_logger().info("State Machine Started")
         
 
@@ -63,7 +66,7 @@ class PathPlanner(Node):
         angular_z = msg.angular.z
 
         if linear_x == 0.0 and angular_z == 0.0:
-            time.sleep(0.3)
+            #time.sleep(0.3)
             self.movement_finished = True #It will check when the robot finished any of the movement nodes
             
     def arm_stop_callback(self,msg):
@@ -79,17 +82,21 @@ class PathPlanner(Node):
 
     def machine_loop(self):
         if self.state == SM_WAIT or not self.movement_finished:
+            #self.get_logger().info('Wating')
             return
 
         elif self.state == SM_GO_FOWARD:
             self.go_foward() #We just want to publish the distance once by how the objective movement node is designed
+            self.get_logger().info('GO FOWARD! #<#)/')
             self.state = SM_ROTATE
 
         elif self.state == SM_ROTATE:
             self.rotate() #We just want to publish the angle once by how the objective movement node is designed
+            self.get_logger().info('ROTATING c:<')
             self.state = SM_SEARCHING
 
         elif self.state == SM_ROCK:
+            self.get_logger().info("ROCK PURSUIT GO TRHOUGH HEAVEN FOR IT ._.)")
             self.rock_movement()
             self.state = SM_SEARCHING
 
@@ -110,33 +117,31 @@ class PathPlanner(Node):
         
         msg = Float32()
         msg.data = self.foward_advance
-        self.publisher_distance.publish(msg.data)
+        self.publisher_distance.publish(msg)
         self.movement_finished = False
+        #self.get_logger().info('Waiting in peace n_n)')
 
     def rotate (self):
         msg = Float32()
         msg.data = self.angle_rotation
-        self.publisher_angle.publish(msg.data)
+        self.publisher_angle.publish(msg)
         self.movement_finished = False
+        #self.get_logger().info('Waiting in peace n_n)')
 
     def arm_search (self):
+        # self.enable_motion()
+        # self.set_mode()
+        # self.set_state()
         msg = Bool()
         msg.data = True
-        self.publisher_arm_searcher.publish(msg.data)
+        self.publisher_arm_searcher.publish(msg)
         self.movement_finished = False
+        #self.get_logger().info('Waiting in peace n_n)')
 
     def rock_movement(self):
         time.sleep(0.2)
         self.publisher_rockfollower.publish(Bool(data=True))
         self.movement_finished = False
-
-    
-
-        
-
-
-
-
         
         
 
