@@ -25,7 +25,6 @@ class FollowerAutonomo(Node):
         # Suscriptores
         self.create_subscription(Bool, '/follower/start', self.start_mission_cb, 10)
         self.create_subscription(PointStamped, '/stone/target_pose_base', self.target_cb, 10)
-        
         self.resume_pub = self.create_publisher(Bool, '/search/resume', 10)
 
         # Variables de Misión
@@ -37,11 +36,11 @@ class FollowerAutonomo(Node):
         self.stable_count = 0
         self.action_queue = [] 
         
-        # Banderas de Delay Físico (NUEVO)
+        # Banderas de Delay Físico
         self.waiting_for_delay = False
         self.delay_end_time = 0.0
         
-        # Parámetros Calibrados
+        # Parámetros Calibrados Originales
         self.EPSILON = 50.0        
         self.Z_FLOOR = -219.2      
         self.Z_APPROACH = -169.2   
@@ -53,7 +52,7 @@ class FollowerAutonomo(Node):
         self.DEPOSIT_JOINTS = [-1.5752, -0.2315, -0.1048, -2.2752, -0.2931, 0.0008]
 
         self.timer = self.create_timer(0.1, self.main_loop)
-        self.get_logger().info('Follower "Tiempos Físicos" Listo.')
+        self.get_logger().info('Follower Final (Tiempos Corregidos) Listo.')
 
     def target_cb(self, msg):
         if self.state == "WAITING_FOR_STABILITY":
@@ -82,8 +81,6 @@ class FollowerAutonomo(Node):
         future.add_done_callback(self.service_done)
 
     def service_done(self, future):
-        # El servicio respondió, pero el movimiento físico apenas empieza.
-        # Quitamos el busy rápido para que el loop entre al Delay físico.
         time.sleep(0.1) 
         self.busy = False
         self.step_idx += 1
@@ -91,14 +88,12 @@ class FollowerAutonomo(Node):
     def main_loop(self):
         if self.busy: return
 
-        # --- CONTROL DE TIEMPOS FÍSICOS (EL ESTABILIZADOR) ---
         if self.waiting_for_delay:
             if time.time() >= self.delay_end_time:
                 self.waiting_for_delay = False
-                self.step_idx += 1  # Pasamos a la siguiente orden real
-            return  # Congela la máquina de estados hasta que termine el delay
+                self.step_idx += 1 
+            return 
 
-        # --- FASES DEL SISTEMA ---
         if self.state == "SETTLING_PAUSE":
             if time.time() - self.start_time > 2.0:
                 self.get_logger().info('Abriendo ojos desde HOME. Esperando lecturas...')
@@ -156,7 +151,6 @@ class FollowerAutonomo(Node):
                 'pose': [w_x, w_y, w_z, self.HOME_CARTESIAN[3], self.HOME_CARTESIAN[4], self.HOME_CARTESIAN[5]],
                 'speed': 50.0, 'acc': 500.0, 'label': f'Orden Waypoint {i}/{num_pasos}'
             })
-            # Estabilizador tras mandar cada orden de bajada
             self.action_queue.append({'type': 'delay', 'duration': 1.2, 'label': 'Físico: Viajando a Waypoint'})
 
         # --- FASE 2: AGARRE ---
@@ -168,7 +162,7 @@ class FollowerAutonomo(Node):
             'pose': [final_x, final_y, self.Z_FLOOR, grip_r, grip_p, grip_yw],
             'speed': 40.0, 'acc': 400.0, 'label': 'Orden Punto C (Piso)'
         })
-        self.action_queue.append({'type': 'delay', 'duration': 2.0, 'label': 'Físico: Estabilizando en el piso'})
+        self.action_queue.append({'type': 'delay', 'duration': 2.5, 'label': 'Físico: Estabilizando en el piso'})
         
         self.action_queue.append({'type': 'service', 'client': self.grab_client, 'label': 'Orden Cerrar Gripper'})
         self.action_queue.append({'type': 'delay', 'duration': 3.5, 'label': 'Físico: Cierre y presión de Gripper'})
@@ -185,36 +179,38 @@ class FollowerAutonomo(Node):
             'type': 'joint', 'angles': self.HOME_JOINTS, 
             'speed': 0.35, 'acc': 2.0, 'label': 'Orden Arco a Home'
         })
-        self.action_queue.append({'type': 'delay', 'duration': 4.0, 'label': 'Físico: Viaje largo a Home'})
+        self.action_queue.append({'type': 'delay', 'duration': 5.0, 'label': 'Físico: Llegando a Home'})
 
+        # ==========================================
+        # EL FIX DEL DEPÓSITO Y LOS 3 SEGUNDOS
+        # ==========================================
         self.action_queue.append({
             'type': 'joint', 'angles': self.DEPOSIT_JOINTS, 
             'speed': 0.35, 'acc': 2.0, 'label': 'Orden Arco a Depósito'
         })
-        self.action_queue.append({'type': 'delay', 'duration': 4.0, 'label': 'Físico: Viaje a Depósito'})
+        # 1. Le damos 7.5 segundos al brazo para completar físicamente el trayecto
+        self.action_queue.append({'type': 'delay', 'duration': 7.5, 'label': 'Físico: Viaje a Depósito'})
+        # 2. Los 3 segundos congelados que solicitaste
+        self.action_queue.append({'type': 'delay', 'duration': 3.0, 'label': 'Físico: Pausa de 3s en Depósito'})
 
         self.action_queue.append({'type': 'service', 'client': self.open_client, 'label': 'Orden Abrir Gripper'})
-        self.action_queue.append({'type': 'delay', 'duration': 2.0, 'label': 'Físico: Soltando roca'})
+        self.action_queue.append({'type': 'delay', 'duration': 2.5, 'label': 'Físico: Soltando roca'})
 
         self.action_queue.append({
             'type': 'joint', 'angles': self.HOME_JOINTS, 
             'speed': 0.35, 'acc': 2.0, 'label': 'Orden Regreso a Operación'
         })
-        self.action_queue.append({'type': 'delay', 'duration': 4.0, 'label': 'Físico: Posicionando en Home'})
+        self.action_queue.append({'type': 'delay', 'duration': 6.5, 'label': 'Físico: Posicionando en Home'})
 
     def execute_action(self):
-        """Ejecuta la orden o el tiempo de espera"""
         if self.step_idx < len(self.action_queue):
             action = self.action_queue[self.step_idx]
             
-            # SI ES UN ESTABILIZADOR (DELAY)
             if action['type'] == 'delay':
                 self.get_logger().info(f"[{self.step_idx + 1}/{len(self.action_queue)}] {action['label']} ({action['duration']}s)")
                 self.waiting_for_delay = True
                 self.delay_end_time = time.time() + action['duration']
-                # Nota: NO sumamos el step_idx aquí, lo sumará el main_loop cuando acabe el tiempo
                 
-            # SI ES UNA ORDEN FÍSICA
             else:
                 self.get_logger().info(f"[{self.step_idx + 1}/{len(self.action_queue)}] {action['label']}")
                 if action['type'] == 'cartesian':

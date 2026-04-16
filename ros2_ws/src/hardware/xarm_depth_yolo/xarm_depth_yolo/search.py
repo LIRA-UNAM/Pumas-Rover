@@ -10,14 +10,12 @@ class SearchNode(Node):
     def __init__(self):
         super().__init__('search_node')
         
-        # Clientes
         self.joint_client = self.create_client(MoveJoint, '/xarm/set_servo_angle')
         self.state_client = self.create_client(SetInt16, '/xarm/set_state')
         self.mode_client = self.create_client(SetInt16, '/xarm/set_mode')
         self.enable_client = self.create_client(SetInt16ById, '/xarm/motion_enable')
         self.error_client = self.create_client(Call, '/xarm/clean_error')
         
-        # Suscriptores
         self.create_subscription(JointState, '/xarm/joint_states', self.initial_pos_callback, 10)
         self.create_subscription(PointStamped, '/yolo/confirmed_object', self.detection_callback, 10)
         self.create_subscription(Bool, '/arm_searcher', self.start_callback, 10)
@@ -71,10 +69,9 @@ class SearchNode(Node):
             self.hard_reset_sequence()
 
     def detection_callback(self, msg):
-        # SOLO ACTUAR SI ESTAMOS BUSCANDO (Previene interferencia con el Follower)
         searching_states = ["MOVING", "LOOK", "RETRACT"]
         if self.sm_start and self.state in searching_states:
-            self.get_logger().warn('¡ROCA DETECTADA! Suspendiendo búsqueda para ir a HOME...')
+            self.get_logger().warn('¡ROCA DETECTADA! Suspendiendo búsqueda...')
             self.sm_start = False
             self.busy = False
             self.stop_arm()
@@ -100,9 +97,9 @@ class SearchNode(Node):
             if time.time() - self.move_timeout > 5.0:
                 self.busy = False
                 if self.is_moving_to_home:
-                    self.get_logger().info('Llegué a HOME. Cediendo control absoluto al Follower.')
+                    self.get_logger().info('En HOME. Avisando al Follower...')
                     self.follower_pub.publish(Bool(data=True))
-                    self.state = "WAITING_FOR_FOLLOWER" # Estado de silencio total
+                    self.state = "WAITING_FOR_FOLLOWER" 
             return
 
         if self.state == "INIT_DELAY":
@@ -136,3 +133,6 @@ class SearchNode(Node):
 
 def main():
     rclpy.init(); node = SearchNode(); rclpy.spin(node); rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
