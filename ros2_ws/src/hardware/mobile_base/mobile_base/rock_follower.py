@@ -29,6 +29,7 @@ class PathPlanner(Node):
             
         
         self.publisher_vel = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.publisher_sm = self.create_publisher(Int16, '/rock_state', 10)
         
         
         
@@ -119,6 +120,8 @@ class PathPlanner(Node):
                 #self.get_logger().info('FIN', throttle_duration_sec=2.0)
                 self.stop_robot()
                 #self.get_logger().info(f"Ruta completa: {self.path_traveled}")
+
+        self.publisher_sm.publish(self.state)
                 
 
     def stop_robot(self):

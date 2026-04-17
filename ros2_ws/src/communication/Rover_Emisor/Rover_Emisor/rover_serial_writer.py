@@ -1,9 +1,11 @@
 from nav_msgs.msg import Odometry
+from geometry_msgs.msg import Twist
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32, Bool
+from std_msgs.msg import Float32, Bool, Int16
 import serial
 import time
+import math
 
 # Opcional: Importa aquí los mensajes a los que te suscribas (ej. Odometry)
 # from nav_msgs.msg import Odometry
@@ -14,7 +16,7 @@ class RoverSerialWriter(Node):
         
         # 1. Configurar el puerto serie (el USB del ESP32 Emisor)
         try:
-            self.ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.1)
+            self.ser = serial.Serial('/dev/ttyUSB1', 115200, timeout=0.1)
             self.get_logger().info("✅ Puerto Serie Emisor conectado exitosamente.")
             time.sleep(2) # Pausa para que el ESP32 reinicie tranquilamente al abrir el serial
         except serial.SerialException as e:
@@ -23,9 +25,10 @@ class RoverSerialWriter(Node):
 
         # 2. Aquí irían tus suscriptores reales (Odometría, Visión, etc.)
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
-        self.create_subscription(Int16, '/rover_state', self.rover_state,10)
-        self.create_subscription(Twist, '/cmd_vel', 10)
-        
+        self.create_subscription(Int16, '/rover_state', self.rover_state, 10)
+        self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_callback, 10)
+        self.create_subscription(Bool, '/follow_rock', self.move_callback, 10)
+        self.create_subscription(Int16, '/rock_state', self.rock_callback, 10)
 
         # 3. Timer para enviar datos constantemente a la Base (ej. 10 Hz / 0.1s)
         self.timer = self.create_timer(0.1, self.enviar_datos_al_esp32)
@@ -53,25 +56,31 @@ class RoverSerialWriter(Node):
             self.get_logger().error(f"Error escribiendo en serial: {e}")
 
     def odom_callback(self, msg):
-        msg=Odometry()
         self.rover_x = msg.pose.pose.position.x
         self.rover_y = msg.pose.pose.position.y
-        self.rover_z = msg.pose.pose.position.z
+        self.rover_theta = 0.0
+        if msg.pose.pose.orientation.w != 0.0:
+            self.rover_theta = 2.0 * math.atan2(msg.pose.pose.orientation.z, msg.pose.pose.orientation.w)
 
-        self.rover_theta = msg.pose.pose.orientation.x
-
-        self.
+        self.get_logger().info(
+            f"[odom_callback] x={self.rover_x:.2f}, y={self.rover_y:.2f}, theta={self.rover_theta:.2f}"
+        )
 
     def rover_state(self, msg):
-        '''
-        SM_WAIT = 0      
-        SM_GO_FOWARD = 1  
-        SM_ROTATE = 2
-        SM_ROCK = 3
-        SM_SEARCHING = 4
-        SM_GOAL = 5
-        '''
-        
+        self.fin = int(msg.data)
+        self.get_logger().info(f"[rover_state] rover state={self.fin}")
+
+    def cmd_vel_callback(self, msg):
+        self.get_logger().info(
+            f"[cmd_vel] linear={msg.linear.x:.2f}, angular={msg.angular.z:.2f}"
+        )
+
+    def move_callback(self, msg):
+        self.get_logger().info(f"[follow_rock] follow_rock={msg.data}")
+
+    def rock_callback(self, msg):
+        self.roca = int(msg.data)
+        self.get_logger().info(f"[rock_state] rock_state={self.roca}")
 
 
 def main(args=None):

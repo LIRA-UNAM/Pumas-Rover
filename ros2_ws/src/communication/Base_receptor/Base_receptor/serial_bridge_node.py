@@ -10,7 +10,7 @@ class SerialBridge(Node):
         
         # 1. Configurar el puerto serie (Asegúrate de que sea el correcto, ej. /dev/ttyUSB0)
         try:
-            self.ser = serial.Serial('/dev/ttyUSB1', 115200, timeout=0.1)
+            self.ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.1)
             if self.ser.is_open:
                 self.get_logger().info("✅ Puerto Serie /dev/ttyUSB1 conectado exitosamente.")
             else:
@@ -42,7 +42,7 @@ class SerialBridge(Node):
                 datos = linea.split(',')
                 self.get_logger().info(f"📥 Recibido ({len(datos)} elementos): {linea}")
 
-                # Verificamos que llegaron los 7 datos completos que programamos
+                # Verificamos que llegaron los 6 datos completos que envía el Emisor
                 if len(datos) == 6:
                     x = float(datos[0])
                     y = float(datos[1])
@@ -50,30 +50,27 @@ class SerialBridge(Node):
                     tipo_terreno = int(datos[3])
                     tipo_roca = int(datos[4])
                     letrero_fin = int(datos[5])
-                    letrero_inicio = int(datos[6])
 
                     # Imprimimos en consola para depurar
-                    self.get_logger().info(f"📍 Pos: ({x}, {y}, {theta_grados}°) | 🏔️ Terreno: {tipo_terreno} | 🪨 Roca: {tipo_roca} | 📌 Fin: {letrero_fin} | 📌 Inicio: {letrero_inicio}")
+                    self.get_logger().info(
+                        f"📍 Pos: ({x:.2f}, {y:.2f}, {theta_grados:.2f}°) | Terreno={tipo_terreno} | Roca={tipo_roca} | Fin={letrero_fin}"
+                    )
 
-                    # --- EJEMPLO: Publicar Posición en ROS 2 ---
+                    # --- Ejemplo: publicar posición en Odometry ---
                     odom_msg = Odometry()
                     odom_msg.header.stamp = self.get_clock().now().to_msg()
                     odom_msg.header.frame_id = "odom"
                     odom_msg.child_frame_id = "base_link"
-                    
-                    # Posición X, Y
                     odom_msg.pose.pose.position.x = x
                     odom_msg.pose.pose.position.y = y
-                    
-                    # Convertir el ángulo (theta) a Radianes para ROS 2
                     theta_rad = math.radians(theta_grados)
-                    # Aquí iría la conversión de Euler a Cuaternión para el eje Z...
                     odom_msg.pose.pose.orientation.z = math.sin(theta_rad / 2.0)
                     odom_msg.pose.pose.orientation.w = math.cos(theta_rad / 2.0)
-
                     self.odom_pub.publish(odom_msg)
-                    
-                    # TODO: Aquí puedes agregar más publicadores para Markers (Las rocas)
+                else:
+                    self.get_logger().warn(
+                        f"Línea serial con longitud incorrecta ({len(datos)}): {linea}"
+                    )
 
             except Exception as e:
                 # Ignoramos si llega basura en el serial ocasionalmente
