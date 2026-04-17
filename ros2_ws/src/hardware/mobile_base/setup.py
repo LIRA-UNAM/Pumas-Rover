@@ -36,7 +36,8 @@ setup(
             'goal_path = mobile_base.goal_path:main',
             'path_follower = mobile_base.path_follower:main',
             'rock_follower = mobile_base.rock_follower:main',
-            'state_machine = mobile_base.state_machine:main',
+            'state_machine1 = mobile_base.state_machine1:main',
+            'state_machine2 = mobile_base.state_machine2:main',
         ],
     },
 )

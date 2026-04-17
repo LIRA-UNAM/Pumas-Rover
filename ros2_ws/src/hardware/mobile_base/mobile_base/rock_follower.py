@@ -69,6 +69,7 @@ class PathPlanner(Node):
         now = time.time()
         msg = Twist()
         msg_rock = Bool ()
+        msg_state = Int16 ()
 
         if (now - self.last_msg_time) > 1.0:
                 self.state = SM_WAITING
@@ -127,8 +128,8 @@ class PathPlanner(Node):
                 msg_rock.data = True
                 self.publisher_rock_reached.publish(msg_rock)
                 #self.get_logger().info(f"Ruta completa: {self.path_traveled}")
-
-        self.publisher_sm.publish(self.state)
+        msg_state = self.state
+        self.publisher_sm.publish(msg_state)
                 
 
     def stop_robot(self):
