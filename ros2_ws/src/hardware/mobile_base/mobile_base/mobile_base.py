@@ -256,7 +256,11 @@ class MobileBaseNode(Node):
         else:
             self.roboclaw_center.BackwardM1(self.ADDRESS, int(round(abs(wheel_speeds[1])*self.max_pwm*self.meters_per_tick)))
         self.roboclaw_rear.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[2])))
-        self.roboclaw_front.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[3])))
+        # self.roboclaw_front.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[3])))
+        if wheel_speeds[3] > 0: #Provisional until we solve encoder left center problem
+            self.roboclaw_front.ForwardM2(self.ADDRESS, int(round(wheel_speeds[3]*self.max_pwm*self.meters_per_tick)))
+        else:
+            self.roboclaw_front.BackwardM2(self.ADDRESS, int(round(abs(wheel_speeds[3])*self.max_pwm*self.meters_per_tick)))
         self.roboclaw_center.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[4])))
         self.roboclaw_rear.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[5])))
         
@@ -347,10 +351,34 @@ class MobileBaseNode(Node):
         enc2_rear = self.roboclaw_rear.ReadEncM2(self.ADDRESS) [1]
 
         #Calculate the angle change between current wheel postion and idle position (makes robot goes foward)
-        self.servo_odometry_angles[0] = (2048 - self.goal_position [0]) * (2*math.pi/4096)
-        self.servo_odometry_angles[1] = (2048 - self.goal_position [1]) * (2*math.pi/4096)
-        self.servo_odometry_angles[2] = (2048 - self.goal_position [2]) * (2*math.pi/4096)
-        self.servo_odometry_angles[3] = (2048 - self.goal_position [3]) * (2*math.pi/4096)
+        # self.servo_odometry_angles[0] = (2048 - self.goal_position [0]) * (2*math.pi/4096)
+        # self.servo_odometry_angles[1] = (2048 - self.goal_position [1]) * (2*math.pi/4096)
+        # self.servo_odometry_angles[2] = (2048 - self.goal_position [2]) * (2*math.pi/4096)
+        # self.servo_odometry_angles[3] = (2048 - self.goal_position [3]) * (2*math.pi/4096)
+        try:
+                posicion, result, error = self.packet_handler.read2ByteTxRx(self.port_handler,self.DXL_ID[0],ADDR_PRESENT_POSITION)
+                if result == COMM_SUCCESS:
+                     self.servo_odometry_angles[0] = (2048 - posicion)*(2*math.pi/4096)
+        except Exception as e:
+            self.servo_odometry_angles[0] = (2048 - self.goal_position [0]) * (2*math.pi/4096)
+        try:
+                posicion, result, error = self.packet_handler.read2ByteTxRx(self.port_handler,self.DXL_ID[1],ADDR_PRESENT_POSITION)
+                if result == COMM_SUCCESS:
+                     self.servo_odometry_angles[1] = (2048 - posicion)*(2*math.pi/4096)
+        except Exception as e:
+            self.servo_odometry_angles[1] = (2048 - self.goal_position [1]) * (2*math.pi/4096)
+        try:
+                posicion, result, error = self.packet_handler.read2ByteTxRx(self.port_handler,self.DXL_ID[2],ADDR_PRESENT_POSITION)
+                if result == COMM_SUCCESS:
+                     self.servo_odometry_angles[2] = (2048 - posicion)*(2*math.pi/4096)
+        except Exception as e:
+            self.servo_odometry_angles[2] = (2048 - self.goal_position [2]) * (2*math.pi/4096)
+        try:
+                posicion, result, error = self.packet_handler.read2ByteTxRx(self.port_handler,self.DXL_ID[3],ADDR_PRESENT_POSITION)
+                if result == COMM_SUCCESS:
+                     self.servo_odometry_angles[3] = (2048 - posicion)*(2*math.pi/4096)
+        except Exception as e:
+            self.servo_odometry_angles[3] = (2048 - self.goal_position [3]) * (2*math.pi/4096)
 
         if enc1_front is None or self.prev_enc1_front is None:
             return
@@ -369,7 +397,7 @@ class MobileBaseNode(Node):
         # dx_right = dx_center_right
         # dx_left = dx_center_left
 
-        dx_right = (dx_front_right + dx_rear_right) / 2.0
+        dx_right = (dx_center_right + dx_rear_right) / 2.0
         dx_left = (dx_front_left + dx_rear_left) / 2.0
 
         #Default 16 milisegundos del delay del puerto,
