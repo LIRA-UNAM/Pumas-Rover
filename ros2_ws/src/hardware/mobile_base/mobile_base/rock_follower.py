@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PointStamped, Twist
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Int16
 import time
 import math
 
@@ -30,6 +30,7 @@ class PathPlanner(Node):
         
         self.publisher_vel = self.create_publisher(Twist, '/cmd_vel', 10)
         self.publisher_sm = self.create_publisher(Int16, '/rock_state', 10)
+        self.publisher_rock_reached = self.create_publisher(Bool, '/registered_rock', 10)
         
         
         
@@ -67,6 +68,7 @@ class PathPlanner(Node):
     def control_loop(self):
         now = time.time()
         msg = Twist()
+        msg_rock = Bool ()
 
         if (now - self.last_msg_time) > 1.0:
                 self.state = SM_WAITING
@@ -119,6 +121,11 @@ class PathPlanner(Node):
                 self.move = False
                 #self.get_logger().info('FIN', throttle_duration_sec=2.0)
                 self.stop_robot()
+                msg.linear.x = 0.0
+                msg.angular.z = 0.0
+                self.publisher_vel.publish(msg)
+                msg_rock.data = True
+                self.publisher_rock_reached.publish(msg_rock)
                 #self.get_logger().info(f"Ruta completa: {self.path_traveled}")
 
         self.publisher_sm.publish(self.state)

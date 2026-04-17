@@ -4,6 +4,7 @@ from tf2_ros import Buffer, TransformListener
 from geometry_msgs.msg import PointStamped, Twist, Point, PoseStamped, Pose
 from nav_msgs.msg import Path
 from rclpy.duration import Duration
+from std_msgs.msg import Bool
 import time
 import math
 
@@ -29,13 +30,21 @@ class PathPlanner(Node):
             'objective_point',
             self.target_callback,
             10)
-        
-        self.subscription = self.create_subscription(Path,'/path_planning/path', self.path_callback, 10)
+        self.subscription_start = self.create_subscription(
+            Point,
+            'objective_start',
+            self.start_callback,
+            10)
+        self.subscription_stop = self.create_subscription(
+            Bool,
+            '/stop_movement',
+            self.stop_callback,
+            10
+        )
             
         
         self.publisher_vel = self.create_publisher(Twist, '/cmd_vel', 10)
-        self.publisher_goal = self.create_publisher(Point, 'goal', 10)
-        self.publisher_start = self.create_publisher(Point, 'start', 10)
+        
         
         self.msg_start = Point()
         self.msg_goal = Point()
@@ -50,15 +59,6 @@ class PathPlanner(Node):
 
         #Para el mapa
         self.resolution = 0.1
-        # self.width = 2 #5 metros de prueba
-        # self.height = 2 #5 metros de prueba
-
-        # self.origin_x = -self.width* self.resolution / 2.0
-        # self.origin_y = -self.height * self.resolution / 2.0
-
-        # self.map_data = [-1] * (int(self.width/self.resolution) * int(self.height/self.resolution))  # Quien sabe, -1 es desconocido, 0 es libre, 100 es ocupado
-        # # Marcar el centro como libre para el inicio
-        # self.map_data[int(self.height/2) * int(self.width/self.resolution) + int(self.width/2)] = 0
 
 
         self.robot_x = 0.0
@@ -74,7 +74,7 @@ class PathPlanner(Node):
         self.target_tolerance = 0.15
         self.Kp = 1.2  #Max 1.2 for 0.5 m/s
         self.alpha_vl = 0.8
-        self.beta_w = 0.5
+        self.beta_w = 1.0
 
 
         
@@ -87,34 +87,33 @@ class PathPlanner(Node):
         self.prev_theta = 0.0
 
         self.path = []
-        self.path_traveled = []
-        self.number_point = 0
-        self.path_map = []
         
         
         self.timer = self.create_timer(0.05, self.control_loop)
         self.get_logger().info('Path Planner para Rover Lunar iniciado.')
 
-
+    
+    def stop_callback (self,msg):
+        self.move = False
+        self.state = SM_ARRIVED
+        self.last_msg_time = time.time()
 
     def target_callback(self, msg):
         #Provisionalmente hacer la devolución de ruta con tópicos, actualizar a un servicio o action
-        self.target_x = msg.x
-        self.target_y = msg.y
+        self.target_x = msg.x + self.robot_x
+        self.target_y = msg.y + self.robot_y
         self.last_msg_time = time.time()
-        self.msg_goal.x = self.target_x
-        self.msg_goal.y = self.target_y
-        self.publisher_goal.publish(self.msg_goal)
-        self.msg_start.x = self.robot_x
-        self.msg_start.y = self.robot_y
-        self.publisher_start.publish(self.msg_start)
         self.get_logger().info(f"Nuevo objetivo recibido: x={self.target_x}, y={self.target_y}")
-
-    def path_callback(self, msg):
-        self.path = [(pose.pose.position.x, pose.pose.position.y) for pose in msg.poses]
-        self.get_logger().info(f"Nuevo path recibido con {self.path}")
         self.move = True
         #self.control_loop()  # Llamar al control loop para procesar el nuevo path
+
+    def start_callback (self,msg):
+        self.target_x = 0.0
+        self.target_y = 0.0
+        self.last_msg_time = time.time()
+        
+        self.move = True
+
         
 
 

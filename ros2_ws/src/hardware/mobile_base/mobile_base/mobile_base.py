@@ -205,6 +205,9 @@ class MobileBaseNode(Node):
         
         #Wheels positions and speeds with dynamixels
         if self.angular > 0.005 or self.angular < -0.005: #Poner un umbral
+
+            if abs(self.linear/self.angular) < 0.5:
+                self.linear = 0.5/self.angular
             
             wheel_information = self.get_wheel_configuration (self.linear,self.angular)   
         else :
