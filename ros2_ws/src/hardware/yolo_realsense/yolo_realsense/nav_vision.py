@@ -31,9 +31,10 @@ class NavVisionNode(Node):
         self.detection_count = 0
         self.threshold = 5  
         
-        # TOPICOS DE SALIDA 
+        # TOPICOS 
         self.pub_banderin = self.create_publisher(PointStamped, '/vision/target_flag', 10)
         self.pub_roca = self.create_publisher(PointStamped, '/vision/target_rock', 10)
+        self.pub_roca_color = self.create_publisher(String, '/vision/target_rock_color', 10) # <--- NUEVO
         self.pub_inicio = self.create_publisher(PointStamped, '/vision/start_flag', 10)
         
         qos_profile = QoSProfile(
@@ -42,6 +43,7 @@ class NavVisionNode(Node):
             depth=10
         )
         
+        # SUSCRIPTORES
         self.state_sub = self.create_subscription(String, '/mission/current_state', self.state_cb, 10)
         self.camera_info_sub = self.create_subscription(CameraInfo, '/camera/camera/color/camera_info', self.info_cb, qos_profile)
 
@@ -53,13 +55,13 @@ class NavVisionNode(Node):
         self.sync.registerCallback(self.vision_cb)
 
         cv2.namedWindow("Pumas-Rover Vision", cv2.WINDOW_NORMAL)
-        self.get_logger().info('VISION ACTIVADA. Filtros anti-falsos listos.')
+        self.get_logger().info('VISION ACTIVADA. Listo para publicar coordenadas y colores.')
 
     def state_cb(self, msg):
         if msg.data in ['SM_BUSCANDO_BANDERIN', 'SM_BUSCANDO_ROCAS', 'SM_REGRESO']:
             if self.current_state != msg.data:
                 self.current_state = msg.data
-                self.detection_count = 0  # <--- VITAL: Reinicia el filtro al cambiar de misión
+                self.detection_count = 0 
                 self.get_logger().info(f'🔄 ESTADO DE MISIÓN ACTUALIZADO: {self.current_state} (Filtro reiniciado)')
 
     def info_cb(self, msg):
@@ -121,17 +123,28 @@ class NavVisionNode(Node):
                 
                 # Solo publica si superó el umbral de confianza
                 if self.detection_count >= self.threshold:
-                    msg = PointStamped()
-                    msg.header = rgb_msg.header
-                    msg.point.x, msg.point.y, msg.point.z = target_pt
+                    
+                    # Preparamos el mensaje de coordenadas (usado para todo)
+                    pt_msg = PointStamped()
+                    pt_msg.header = rgb_msg.header
+                    pt_msg.point.x, pt_msg.point.y, pt_msg.point.z = target_pt
                     
                     if self.current_state == 'SM_BUSCANDO_BANDERIN':
-                        self.pub_banderin.publish(msg)
+                        self.pub_banderin.publish(pt_msg)
+                        
                     elif self.current_state == 'SM_BUSCANDO_ROCAS':
-                        self.pub_roca.publish(msg)
+                        # Publicamos Coordenadas
+                        self.pub_roca.publish(pt_msg)
+                        
+                        # Publicamos el Color en el nuevo tópico
+                        color_msg = String()
+                        color_msg.data = name
+                        self.pub_roca_color.publish(color_msg)
+                        
                         self.get_logger().info(f'ROCA CONFIRMADA: {name} a {target_pt[2]:.2f}m', once=True)
+                        
                     elif self.current_state == 'SM_REGRESO':
-                        self.pub_inicio.publish(msg)
+                        self.pub_inicio.publish(pt_msg)
                         self.get_logger().info(f'INICIO CONFIRMADO: A {target_pt[2]:.2f}m', once=True)
             else:
                 self.detection_count = 0
