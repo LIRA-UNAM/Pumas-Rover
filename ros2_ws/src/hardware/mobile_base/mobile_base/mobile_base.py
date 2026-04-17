@@ -1,7 +1,10 @@
+
 import rclpy
 import time
 import math
 import numpy
+from nav_msgs.msg import Odometry
+from std_msgs.msg import Float32, Bool
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from tf2_ros import TransformBroadcaster
@@ -53,8 +56,6 @@ class MobileBaseNode(Node):
             rclpy.shutdown()
             return
 
-        
-
         #Subscription to cmd_vel topic, give us the robot speed in form of a Twist
         self.subscription = self.create_subscription(
             Twist,
@@ -67,6 +68,8 @@ class MobileBaseNode(Node):
 
         #Broadcaster for odometry transformation
         self.tf_broadcaster = TransformBroadcaster(self)
+        # Publicador de Odometría
+        self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
 
         #Variables for odometry calculations
         self.data = False
@@ -446,6 +449,23 @@ class MobileBaseNode(Node):
         t.transform.rotation.w = math.cos(self.theta / 2.0)
 
         self.tf_broadcaster.sendTransform(t)
+
+        # --- Publicar el tópico /odom ---
+        odom_msg = Odometry()
+        odom_msg.header.stamp = t.header.stamp
+        odom_msg.header.frame_id = "odom"
+        odom_msg.child_frame_id = "base_link"
+        
+        odom_msg.pose.pose.position.x = self.x
+        odom_msg.pose.pose.position.y = self.y
+        odom_msg.pose.pose.position.z = 0.0
+        
+        odom_msg.pose.pose.orientation.x = 0.0
+        odom_msg.pose.pose.orientation.y = 0.0
+        odom_msg.pose.pose.orientation.z = math.sin(self.theta / 2.0)
+        odom_msg.pose.pose.orientation.w = math.cos(self.theta / 2.0)
+        
+        self.odom_pub.publish(odom_msg)
 
         self.get_logger().info(
              f"x={self.x:.4f} y={self.y:.4f} theta={self.theta:.4f}")
