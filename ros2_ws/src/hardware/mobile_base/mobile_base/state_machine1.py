@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from tf2_ros import Buffer, TransformListener
 from geometry_msgs.msg import PointStamped, Twist, Quaternion, Point
-from std_msgs.msg import Float32, Bool, Int16
+from std_msgs.msg import Float32, Bool, Int16, String
 from rclpy.duration import Duration
 from xarm_msgs.srv import SetInt16, SetInt16ById
 import time
@@ -58,7 +58,8 @@ class PathPlanner(Node):
         self.publisher_stop_movement = self.create_publisher (Bool, '/stop_movement', 10)
 
         self.publisher_state = self.create_publisher(Int16, '/rover_state',10)
-    
+
+        self.pub_vision_state = self.create_publisher(String, '/mission/current_state', 10)
         #Tunning movement parameters
         self.foward_advance = 4.0 #meters
         self.angle_rotation = math.pi/2 #radians
@@ -79,6 +80,7 @@ class PathPlanner(Node):
         if msg.data == True:
             self.state = SM_GO_FORWARD
             self.movement_finished = True
+            self.pub_vision_state.publish(String(data='SM_BUSCANDO_BANDERIN'))
             self.get_logger().info("State Machine Started")
         
 
@@ -132,8 +134,11 @@ class PathPlanner(Node):
 
         elif self.state == SM_GOAL_LEAVE:
             self.movement(-3.0*self.resolution,3.0*self.resolution) #We just want to publish the angle once by how the objective movement node is designed
-            self.get_logger().info('NOW GET OUT OF HERE -_-)')
+            self.get_logger().info('NOW GET THE F*CK OUT OF HERE -_-)')
             self.goal_reached = True
+            
+            self.pub_vision_state.publish(String(data='SM_BUSCANDO_ROCAS'))
+
             self.state = SM_SAND_SEARCH
 
         elif self.state == SM_SAND_SEARCH:
@@ -143,6 +148,7 @@ class PathPlanner(Node):
             if self.found_rocks < 3 or time.time()-self.init_time < 480:
                 self.state = SM_ROCK_SEARCH
             else:
+                self.pub_vision_state.publish(String(data='SM_REGRESO'))
                 self.state = SM_GO_START
 
         elif self.state == SM_ROCK_SEARCH:
@@ -151,6 +157,7 @@ class PathPlanner(Node):
             if self.found_rocks < 3 or time.time()-self.init_time < 480:
                 self.state = SM_SAND_SEARCH
             else:
+                self.pub_vision_state.publish(String(data='SM_REGRESO'))
                 self.state = SM_GO_START
 
         elif self.state == SM_GO_START:
