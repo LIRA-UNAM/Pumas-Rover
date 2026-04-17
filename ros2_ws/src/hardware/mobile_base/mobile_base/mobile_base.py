@@ -207,7 +207,11 @@ class MobileBaseNode(Node):
         if self.angular > 0.005 or self.angular < -0.005: #Poner un umbral
 
             if abs(self.linear/self.angular) < 0.5:
-                self.linear = 0.5/self.angular
+                if self. linear != 0:
+                    self.linear = (0.5/abs(self.angular)) * self.linear/abs(self.linear)
+                else:
+                    self.linear = (0.5/self.angular)
+
             
             wheel_information = self.get_wheel_configuration (self.linear,self.angular)   
         else :
@@ -258,15 +262,15 @@ class MobileBaseNode(Node):
         self.roboclaw_front.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[0])))
         #self.roboclaw_center.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[1]))) 
         if wheel_speeds[1] > 0: #Provisional until we solve encoder left center problem
-            self.roboclaw_center.ForwardM1(self.ADDRESS, int(round(wheel_speeds[1]*self.max_pwm*self.meters_per_tick)))
+            self.roboclaw_center.ForwardM1(self.ADDRESS, min(int(round(wheel_speeds[1]*self.max_pwm*self.meters_per_tick)),127))
         else:
-            self.roboclaw_center.BackwardM1(self.ADDRESS, int(round(abs(wheel_speeds[1])*self.max_pwm*self.meters_per_tick)))
+            self.roboclaw_center.BackwardM1(self.ADDRESS, min(int(round(abs(wheel_speeds[1])*self.max_pwm*self.meters_per_tick)),127))
         self.roboclaw_rear.SpeedAccelM1(self.ADDRESS,self.accel_max,int(round(wheel_speeds[2])))
         # self.roboclaw_front.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[3])))
         if wheel_speeds[3] > 0: #Provisional until we solve encoder left center problem
-            self.roboclaw_front.ForwardM2(self.ADDRESS, int(round(wheel_speeds[3]*self.max_pwm*self.meters_per_tick)))
+            self.roboclaw_front.ForwardM2(self.ADDRESS, min(int(round(wheel_speeds[3]*self.max_pwm*self.meters_per_tick)),127))
         else:
-            self.roboclaw_front.BackwardM2(self.ADDRESS, int(round(abs(wheel_speeds[3])*self.max_pwm*self.meters_per_tick)))
+            self.roboclaw_front.BackwardM2(self.ADDRESS, min(int(round(abs(wheel_speeds[3])*self.max_pwm*self.meters_per_tick)),127))
         self.roboclaw_center.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[4])))
         self.roboclaw_rear.SpeedAccelM2(self.ADDRESS,self.accel_max,int(round(wheel_speeds[5])))
         

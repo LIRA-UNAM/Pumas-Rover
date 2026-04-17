@@ -17,7 +17,7 @@ class PathPlanner(Node):
         
         self.subscription = self.create_subscription(
             PointStamped,
-            '/vision/target_rock',
+            '/vision/target_flag',
             self.target_callback,
             10)
         
@@ -26,7 +26,7 @@ class PathPlanner(Node):
         
         self.subscription_move = self.create_subscription(
             Bool,
-            '/follow_rock',
+            '/follow_goal',
             self.move_callback,
             10)
             
@@ -128,8 +128,6 @@ class PathPlanner(Node):
                 msg.linear.x = 0.0
                 msg.angular.z = 0.0
                 self.publisher_vel.publish(msg)
-                msg_rock.data = True
-                self.publisher_rock_reached.publish(msg_rock)
                 #self.get_logger().info(f"Ruta completa: {self.path_traveled}")
         msg_state.data = self.state
         self.publisher_sm.publish(msg_state)

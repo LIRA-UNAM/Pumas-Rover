@@ -18,6 +18,7 @@ def generate_launch_description():
         name='mobile_base',
         package='mobile_base',
         executable='mobile_base',
+        arguments=['--ros-args', '--log-level', 'error']
     )
     
     joy_node = Node(
@@ -26,9 +27,18 @@ def generate_launch_description():
         name='joy',
         #output='screen',
     )
+
+    serial_write_node = Node(
+        name='serial_writer',
+        package='Rover_Emisor',
+        executable='rover_serial_writer',
+        #arguments=['--ros-args', '--log-level', 'error']
+        
+    )
     
         
     return LaunchDescription([
+        serial_write_node,
         mobile_base_node,
         remote_control_node,
         joy_node

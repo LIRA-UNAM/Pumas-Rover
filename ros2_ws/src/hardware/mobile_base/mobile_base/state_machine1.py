@@ -34,13 +34,13 @@ class PathPlanner(Node):
             self.cmd_vel_callback,
             10
         )
-        self.confirmed_sub = self.create_subscription(PointStamped, '/yolo/confirmed_object', self.detection_callback, 10)
+        self.confirmed_sub = self.create_subscription(PointStamped, '/vision/target_rock', self.detection_callback, 10)
         self.confirmed_goal = self.create_subscription(
              PointStamped,
-             '/yolo/end_distance',
+             '/vision/target_flag',
              self.confirmed_goal_callback,
              10)
-        self.registered_rock_sub = self.create_subscription(PointStamped, '/registered_rock', self.registered_rock_callback, 10)
+        self.registered_rock_sub = self.create_subscription(Bool, '/registered_rock', self.registered_rock_callback, 10)
 
         #ros2 topic pub --once /sm_start std_msgs/msg/Bool "{data: true}"
 
@@ -70,6 +70,8 @@ class PathPlanner(Node):
 
         self.state = SM_WAIT
         self.movement_finished = False
+
+        self.resolution = 0.5
 
         self.timer = self.create_timer(0.05, self.machine_loop)
 
@@ -109,37 +111,42 @@ class PathPlanner(Node):
 
         elif self.state == SM_GO_FORWARD:
             self.first_alaign = False
-            self.movement(5.0, 0.0) #We just want to publish the distance once by how the objective movement node is designed
+            self.movement(5.0*self.resolution, 0.0*self.resolution) #We just want to publish the distance once by how the objective movement node is designed
             self.get_logger().info('GO FOWARD ! #<#)/')
             self.state = SM_ROTATE
         
         elif self.state == SM_ROTATE:
-            self.movement(1.0, -3.0) #Negative is used for right desplacement
+            self.movement(1.0*self.resolution, -3.0*self.resolution) #Negative is used for right desplacement
             self.get_logger().info('ROTATING RIGHT c:<')
             self.state = SM_SEARCH_GOAL
 
         elif self.state == SM_SEARCH_GOAL:
-            self.movement(3.0, -3.0)
+            self.movement(3.0*self.resolution, -3.0*self.resolution)
             self.get_logger().info('GO DIAGONAL FOR THAT GOAL >~<)')
             self.state = SM_SEARCH_GOAL
 
         elif self.state == SM_GOAL_PURSUIT:
             self.get_logger().info("GOAL PURSUIT, GO TRHOUGH HELL FOR IT ._.)")
+            self.goal_movement()
             self.state = SM_GOAL_LEAVE
 
         elif self.state == SM_GOAL_LEAVE:
-            self.movement(-3.0,3.0) #We just want to publish the angle once by how the objective movement node is designed
+            self.movement(-3.0*self.resolution,3.0*self.resolution) #We just want to publish the angle once by how the objective movement node is designed
             self.get_logger().info('NOW GET OUT OF HERE -_-)')
             self.goal_reached = True
             self.state = SM_SAND_SEARCH
 
         elif self.state == SM_SAND_SEARCH:
-            self.movement(-1.0,2.0) #We just want to publish the distance once by how the objective movement node is designed
+            self.movement(-1.0*self.resolution,2.0*self.resolution) #We just want to publish the distance once by how the objective movement node is designed
             self.get_logger().info('MMMM ROCKS')
-            self.state = SM_ROCK_SEARCH
+            
+            if self.found_rocks < 3 or time.time()-self.init_time < 480:
+                self.state = SM_ROCK_SEARCH
+            else:
+                self.state = SM_GO_START
 
         elif self.state == SM_ROCK_SEARCH:
-            self.movement(-2.0,1.0) #We just want to publish the distance once by how the objective movement node is designed
+            self.movement(-2.0*self.resolution,1.0*self.resolution) #We just want to publish the distance once by how the objective movement node is designed
             self.get_logger().info('WHERE ARE THOSE FREAKING ROCKS 0_o)?')
             if self.found_rocks < 3 or time.time()-self.init_time < 480:
                 self.state = SM_SAND_SEARCH
@@ -148,6 +155,7 @@ class PathPlanner(Node):
 
         elif self.state == SM_GO_START:
             self.get_logger().info('MISSION IS OVER, LETS GO HOME BUDY U_U)/')
+            self.start_movement()
             self.state = SM_GO_START
 
 
@@ -176,6 +184,11 @@ class PathPlanner(Node):
     def rock_movement(self):
         time.sleep(0.2)
         self.publisher_rockfollower.publish(Bool(data=True))
+        self.movement_finished = False
+
+    def goal_movement(self):
+        time.sleep(0.2)
+        self.publisher_goalfollower.publish(Bool(data=True))
         self.movement_finished = False
 
     def start_movement (self):

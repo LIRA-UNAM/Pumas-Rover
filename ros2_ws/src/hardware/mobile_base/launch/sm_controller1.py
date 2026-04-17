@@ -30,7 +30,12 @@ def generate_launch_description():
         executable='rock_follower',
         arguments=['--ros-args', '--log-level', 'error']
     )
-
+    goal_follower_node = Node(
+        name='goal_follower',
+        package='mobile_base',
+        executable='goal_follower',
+        arguments=['--ros-args', '--log-level', 'error']
+    )
 
     realsense_launch = IncludeLaunchDescription(
     PathJoinSubstitution([
@@ -57,11 +62,19 @@ def generate_launch_description():
         arguments=['--ros-args', '--log-level', 'error']
     )
 
+    serial_write_node = Node(
+        name='serial_writer',
+        package='Rover_Emisor',
+        executable='rover_serial_writer',
+        arguments=['--ros-args', '--log-level', 'error']
+        
+    )
     
         
     return LaunchDescription([
 
-
+        goal_follower_node,
+        serial_write_node,
         state_machine_node1,
         objective_movement_node,
         rock_follower_node,

@@ -11,7 +11,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'pyserial'],
     zip_safe=True,
     maintainer='danielgrioja',
     maintainer_email='angel.galicia@ingenieria.unam.edu',
@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'serial_writer = Rover_Emisor.rover_serial_writer:main',
+            'rover_serial_writer = Rover_Emisor.rover_serial_writer:main',
         ],
     },
 )

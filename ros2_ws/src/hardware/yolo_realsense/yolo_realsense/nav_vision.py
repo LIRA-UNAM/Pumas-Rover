@@ -62,7 +62,7 @@ class NavVisionNode(Node):
             if self.current_state != msg.data:
                 self.current_state = msg.data
                 self.detection_count = 0 
-                self.get_logger().info(f'🔄 ESTADO DE MISIÓN ACTUALIZADO: {self.current_state} (Filtro reiniciado)')
+                self.get_logger().info(f'ESTADO DE MISIÓN ACTUALIZADO: {self.current_state} (Filtro reiniciado)')
 
     def info_cb(self, msg):
         self.fx, self.fy, self.cx, self.cy = msg.k[0], msg.k[4], msg.k[2], msg.k[5]
